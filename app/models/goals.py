@@ -7,6 +7,7 @@ class DietGoal(db.Model):
     protein_g_target = db.Column(db.Float)
     carbs_g_target = db.Column(db.Float)
     fat_g_target = db.Column(db.Float)
+    fiber_g_target = db.Column(db.Float)  # optional
     created_at = db.Column(db.Date, default=date.today)
     notes = db.Column(db.Text)
 
@@ -17,6 +18,7 @@ class DietGoal(db.Model):
             "protein_g_target": self.protein_g_target,
             "carbs_g_target": self.carbs_g_target,
             "fat_g_target": self.fat_g_target,
+            "fiber_g_target": self.fiber_g_target,
             "created_at": self.created_at.isoformat(),
             "notes": self.notes,
         }

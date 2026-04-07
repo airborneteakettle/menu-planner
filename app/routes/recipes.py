@@ -62,6 +62,7 @@ def import_recipe():
         fat_g=scraped.get("fat_g"),
         carbs_g=scraped.get("carbs_g"),
         meal_type=scraped.get("meal_type"),
+        instructions=scraped.get("instructions"),
         source_url=scraped.get("source_url"),
         nutrition_source=scraped.get("nutrition_source"),
     )

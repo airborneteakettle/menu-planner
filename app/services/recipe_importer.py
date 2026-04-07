@@ -1,6 +1,6 @@
 import re
 from recipe_scrapers import scrape_me
-from app.services.usda import estimate_recipe_nutrition
+from app.services.usda import estimate_recipe_nutrition, parse_ingredient
 
 
 def _parse_numeric(value: str | None) -> float | None:
@@ -74,6 +74,17 @@ def import_recipe_from_url(url: str, usda_api_key: str) -> dict:
     except Exception:
         pass
 
+    instructions = None
+    try:
+        instructions = scraper.instructions() or None
+    except Exception:
+        pass
+
+    parsed_ingredients = []
+    for ing in ingredients:
+        quantity, food_name = parse_ingredient(ing)
+        parsed_ingredients.append({"name": food_name, "quantity": quantity})
+
     return {
         "name": name,
         "servings": servings,
@@ -82,9 +93,8 @@ def import_recipe_from_url(url: str, usda_api_key: str) -> dict:
         "fat_g": fat_g,
         "carbs_g": carbs_g,
         "meal_type": meal_type,
-        "ingredients": [
-            {"name": ing, "quantity": None} for ing in ingredients
-        ],
+        "instructions": instructions,
+        "ingredients": parsed_ingredients,
         "source_url": url,
         "nutrition_source": "page" if page_nutrition else "usda_estimate",
     }

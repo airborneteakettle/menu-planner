@@ -24,6 +24,7 @@ def create_goal():
         protein_g_target=data.get("protein_g_target"),
         carbs_g_target=data.get("carbs_g_target"),
         fat_g_target=data.get("fat_g_target"),
+        fiber_g_target=data.get("fiber_g_target"),
         notes=data.get("notes"),
     )
     db.session.add(goal)

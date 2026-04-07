@@ -16,13 +16,26 @@ _QUANTITY_RE = re.compile(
     re.IGNORECASE,
 )
 
+def parse_ingredient(ingredient_str: str) -> tuple[str | None, str]:
+    """
+    Split a raw ingredient string into (quantity, food_name).
+    e.g. "2 cups diced chicken breast, boneless" → ("2 cups", "chicken breast")
+    """
+    match = _QUANTITY_RE.match(ingredient_str)
+    if match:
+        quantity = match.group().strip() or None
+        food_name = ingredient_str[match.end():].strip()
+    else:
+        quantity = None
+        food_name = ingredient_str
+    food_name = re.sub(r"\(.*?\)", "", food_name).strip()
+    food_name = food_name.split(",")[0].strip()
+    return quantity, food_name or ingredient_str
+
+
 def _extract_food_name(ingredient: str) -> str:
-    name = _QUANTITY_RE.sub("", ingredient).strip()
-    # Drop parenthetical notes like "(about 1 lb)"
-    name = re.sub(r"\(.*?\)", "", name).strip()
-    # Take the first meaningful chunk before a comma
-    name = name.split(",")[0].strip()
-    return name or ingredient
+    _, name = parse_ingredient(ingredient)
+    return name
 
 
 def _parse_nutrients(food_nutrients: list) -> dict:

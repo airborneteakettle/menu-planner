@@ -14,6 +14,8 @@ class Recipe(db.Model):
 
     # e.g. "breakfast", "lunch", "dinner", "snack"
     meal_type = db.Column(db.String(50))
+    source_url = db.Column(db.String(2048))
+    nutrition_source = db.Column(db.String(20))  # "page" or "usda_estimate"
 
     ingredients = db.relationship("Ingredient", backref="recipe", lazy=True, cascade="all, delete-orphan")
     menu_entries = db.relationship("MenuEntry", backref="recipe", lazy=True)
@@ -29,6 +31,8 @@ class Recipe(db.Model):
             "carbs_g": self.carbs_g,
             "fat_g": self.fat_g,
             "meal_type": self.meal_type,
+            "source_url": self.source_url,
+            "nutrition_source": self.nutrition_source,
             "ingredients": [i.to_dict() for i in self.ingredients],
         }
 

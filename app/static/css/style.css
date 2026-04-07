@@ -1,3 +1,221 @@
-/* Menu Planner styles */
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: system-ui, sans-serif; padding: 2rem; }
+/* ── Base ───────────────────────────────────────────────── */
+:root {
+  --brand:      #1b5e20;
+  --brand-mid:  #2e7d32;
+  --brand-lite: #e8f5e9;
+  --cal-color:  #e64a19;
+  --prot-color: #1565c0;
+  --carb-color: #f57f17;
+  --fat-color:  #6a1b9a;
+  --fiber-color:#2e7d32;
+}
+
+body {
+  background: #f4f6f4;
+  font-size: 0.92rem;
+}
+
+/* ── Navbar ─────────────────────────────────────────────── */
+#main-nav {
+  background: var(--brand);
+  box-shadow: 0 2px 6px rgba(0,0,0,.25);
+}
+
+#main-nav .nav-link {
+  border-radius: 6px;
+  padding: .35rem .75rem;
+  transition: background .15s;
+}
+
+#main-nav .nav-link:hover,
+#main-nav .nav-link.active {
+  background: rgba(255,255,255,.18);
+}
+
+/* ── Cards ──────────────────────────────────────────────── */
+.card {
+  border: none;
+  border-radius: 10px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.1);
+}
+
+.card-header {
+  border-radius: 10px 10px 0 0 !important;
+  font-size: .88rem;
+}
+
+/* ── Progress bars ──────────────────────────────────────── */
+.macro-bar { height: 9px; border-radius: 4px; }
+
+/* ── Recipe cards ───────────────────────────────────────── */
+.recipe-card {
+  cursor: pointer;
+  transition: transform .15s, box-shadow .15s;
+}
+.recipe-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,.15);
+}
+
+.meal-badge-pill {
+  font-size: .7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  padding: .2em .55em;
+  border-radius: 20px;
+}
+
+/* ── Planner grid ───────────────────────────────────────── */
+.planner-table {
+  min-width: 700px;
+  table-layout: fixed;
+}
+
+.planner-table th {
+  background: var(--brand-lite);
+  font-size: .8rem;
+  font-weight: 600;
+  text-align: center;
+  padding: .5rem .4rem;
+}
+
+.planner-table th.today-col {
+  background: var(--brand);
+  color: #fff;
+}
+
+.planner-table td.meal-label-cell {
+  background: #fafafa;
+  font-size: .75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: #555;
+  vertical-align: middle;
+  width: 80px;
+}
+
+.planner-cell {
+  vertical-align: top;
+  padding: .35rem .4rem;
+  min-height: 60px;
+  background: #fff;
+  border: 1px solid #e9ecef;
+}
+
+.planner-cell.today-col {
+  background: #f0faf0;
+}
+
+.entry-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--brand-lite);
+  color: var(--brand);
+  border-radius: 6px;
+  padding: .2rem .45rem;
+  font-size: .78rem;
+  font-weight: 500;
+  margin: 2px;
+  cursor: pointer;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.entry-chip:hover { background: #c8e6c9; }
+
+.entry-chip .btn-remove {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: .8rem;
+  line-height: 1;
+  color: #666;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.entry-chip .btn-remove:hover { color: #c62828; }
+
+.btn-add-entry {
+  background: none;
+  border: 1px dashed #adb5bd;
+  border-radius: 6px;
+  color: #adb5bd;
+  font-size: .8rem;
+  padding: .1rem .4rem;
+  cursor: pointer;
+  margin: 2px;
+  transition: all .15s;
+}
+.btn-add-entry:hover {
+  border-color: var(--brand-mid);
+  color: var(--brand-mid);
+}
+
+/* ── Shopping list ──────────────────────────────────────── */
+.shop-category-header {
+  font-size: .75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--brand);
+  padding: .6rem 0 .25rem;
+  border-bottom: 2px solid var(--brand-lite);
+  margin-bottom: .4rem;
+}
+
+.shop-item {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  padding: .35rem .2rem;
+  border-bottom: 1px solid #f0f0f0;
+  font-size: .88rem;
+}
+
+.shop-item.checked .shop-item-name {
+  text-decoration: line-through;
+  color: #aaa;
+}
+
+.shop-item input[type=checkbox] {
+  flex-shrink: 0;
+  width: 1.1em;
+  height: 1.1em;
+  accent-color: var(--brand-mid);
+}
+
+.shop-item-recipes {
+  font-size: .72rem;
+  color: #888;
+}
+
+/* ── Goals ──────────────────────────────────────────────── */
+.goal-stat {
+  text-align: center;
+  padding: .75rem;
+}
+.goal-stat .value {
+  font-size: 1.6rem;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.goal-stat .label {
+  font-size: .72rem;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: #777;
+}
+
+/* ── Spinner helper ─────────────────────────────────────── */
+.loading-state {
+  text-align: center;
+  padding: 3rem;
+  color: #999;
+}
+
+/* ── Nutrition source badge ─────────────────────────────── */
+.badge-usda { background: #fff3e0; color: #e65100; font-weight: 500; }
+.badge-page { background: #e8f5e9; color: #1b5e20; font-weight: 500; }

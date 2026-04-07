@@ -1,14 +1,136 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Menu Planner</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Menu Planner</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <link href="/static/css/style.css" rel="stylesheet">
 </head>
 <body>
-    <h1>Menu Planner</h1>
-    <p>API running at <code>/api/</code></p>
-    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+
+<nav class="navbar navbar-expand-lg navbar-dark" id="main-nav">
+  <div class="container-fluid px-4">
+    <span class="navbar-brand fw-bold fs-5">
+      <i class="bi bi-journal-richtext me-2"></i>Menu Planner
+    </span>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navMenu">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="navMenu">
+      <ul class="navbar-nav ms-auto gap-1">
+        <li class="nav-item"><a class="nav-link" href="#dashboard"><i class="bi bi-speedometer2 me-1"></i>Dashboard</a></li>
+        <li class="nav-item"><a class="nav-link" href="#recipes"><i class="bi bi-card-list me-1"></i>Recipes</a></li>
+        <li class="nav-item"><a class="nav-link" href="#planner"><i class="bi bi-calendar-week me-1"></i>Planner</a></li>
+        <li class="nav-item"><a class="nav-link" href="#shopping"><i class="bi bi-bag-check me-1"></i>Shopping</a></li>
+        <li class="nav-item"><a class="nav-link" href="#goals"><i class="bi bi-bullseye me-1"></i>Goals</a></li>
+      </ul>
+    </div>
+  </div>
+</nav>
+
+<main class="container-fluid py-4 px-4">
+  <div id="view-dashboard" class="view"></div>
+  <div id="view-recipes"   class="view d-none"></div>
+  <div id="view-planner"   class="view d-none"></div>
+  <div id="view-shopping"  class="view d-none"></div>
+  <div id="view-goals"     class="view d-none"></div>
+</main>
+
+<div id="toast-container" class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index:9999"></div>
+
+<!-- Modal: Import Recipe -->
+<div class="modal fade" id="modal-import" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-link-45deg me-1"></i>Import Recipe from URL</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <label class="form-label fw-medium" for="import-url">Recipe URL</label>
+        <input type="url" class="form-control" id="import-url"
+               placeholder="https://www.allrecipes.com/recipe/...">
+        <div class="form-text">Supports AllRecipes, NYT Cooking, Serious Eats, and 300+ other sites.</div>
+        <div id="import-error" class="alert alert-danger mt-3 d-none"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-success" id="btn-import-submit">
+          <span class="spinner-border spinner-border-sm d-none me-1" id="import-spinner"></span>
+          Import
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Recipe Detail -->
+<div class="modal fade" id="modal-recipe" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div>
+          <h5 class="modal-title mb-0" id="recipe-modal-title"></h5>
+          <div id="recipe-modal-meta" class="small text-muted mt-1"></div>
+        </div>
+        <button type="button" class="btn-close ms-auto" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="recipe-modal-body"></div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        <button class="btn btn-success" id="btn-open-add-menu">
+          <i class="bi bi-calendar-plus me-1"></i>Add to Menu
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Add to Menu -->
+<div class="modal fade" id="modal-add-menu" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-calendar-plus me-1"></i>Add to Menu</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="add-menu-recipe-id">
+        <p class="text-muted small mb-3" id="add-menu-recipe-name"></p>
+        <div class="mb-3">
+          <label class="form-label fw-medium" for="add-menu-date">Date</label>
+          <input type="date" class="form-control" id="add-menu-date">
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-medium" for="add-menu-meal-type">Meal</label>
+          <select class="form-select" id="add-menu-meal-type">
+            <option value="breakfast">Breakfast</option>
+            <option value="lunch">Lunch</option>
+            <option value="dinner" selected>Dinner</option>
+            <option value="snack">Snack</option>
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-medium" for="add-menu-servings">Servings</label>
+          <input type="number" class="form-control" id="add-menu-servings"
+                 value="1" min="0.5" step="0.5">
+        </div>
+        <div id="add-menu-error" class="alert alert-danger d-none"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-success" id="btn-add-menu-submit">
+          <span class="spinner-border spinner-border-sm d-none me-1" id="add-menu-spinner"></span>
+          Add to Menu
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script type="module" src="/static/js/app.js"></script>
 </body>
 </html>

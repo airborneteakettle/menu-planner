@@ -24,7 +24,7 @@ def import_recipe_from_url(url: str, usda_api_key: str) -> dict:
     Scrape a recipe URL and return a structured dict ready to insert into the DB.
     Falls back to USDA ingredient lookup if the page doesn't provide nutrition.
     """
-    scraper = scrape_me(url, wild_mode=True)
+    scraper = scrape_me(url)
 
     ingredients = []
     try:

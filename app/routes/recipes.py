@@ -225,11 +225,18 @@ def update_recipe(recipe_id):
     recipe = Recipe.query.get_or_404(recipe_id)
     data   = request.get_json()
     for field in ("name", "description", "servings", "calories",
-                  "protein_g", "carbs_g", "fat_g", "fiber_g", "meal_type"):
+                  "protein_g", "carbs_g", "fat_g", "fiber_g", "meal_type",
+                  "instructions", "nutrition_source"):
         if field in data:
             setattr(recipe, field, data[field])
     if "tags" in data:
         _sync_tags(recipe, data["tags"])
+    if "ingredients" in data:
+        for ing in list(recipe.ingredients):
+            db.session.delete(ing)
+        db.session.flush()
+        for ing in data["ingredients"]:
+            recipe.ingredients.append(Ingredient(name=ing["name"], quantity=ing.get("quantity")))
     db.session.commit()
     return jsonify(recipe.to_dict())
 

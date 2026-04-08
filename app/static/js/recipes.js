@@ -1,10 +1,12 @@
 import { api }                              from './api.js';
 import { toast, fmt, MEAL_TYPES, MEAL_COLORS } from './utils.js';
 
-let _el          = null;
-let _allRecipes  = [];
-let _activeTags  = new Set();
+let _el           = null;
+let _allRecipes   = [];
+let _activeTags   = new Set();
 let _activeRating = 0;
+let _editMode         = false;
+let _editingRecipeId  = null;
 
 export async function renderRecipes(el) {
   _el = el;
@@ -364,6 +366,19 @@ function populateModal(r, allTags) {
     window._addMenuCallback = () => { if (_el) renderRecipes(_el); };
     window.openAddMenuModal(r.id, r.name, null, r.meal_type);
   };
+
+  document.getElementById('btn-edit-recipe').onclick = () => {
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('modal-recipe')).hide();
+    openEditModal(r);
+  };
+
+  const reimportBtn = document.getElementById('btn-reimport-recipe');
+  if (r.source_url) {
+    reimportBtn.classList.remove('d-none');
+    reimportBtn.onclick = () => reimportRecipe(r.source_url);
+  } else {
+    reimportBtn.classList.add('d-none');
+  }
 }
 
 function wireStars(bodyEl, recipe) {
@@ -465,6 +480,84 @@ function wireTags(bodyEl, recipe) {
 }
 
 
+// ── Edit Modal ────────────────────────────────────────────────────────────────
+
+function splitQuantity(qty) {
+  // Put the whole quantity string in the amount field; leave unit blank.
+  // On save, qty = [amount, unit].filter(Boolean).join(' ') reproduces the original.
+  return [qty || '', ''];
+}
+
+function openEditModal(recipe) {
+  _editMode        = true;
+  _editingRecipeId = recipe.id;
+  _pendingNutrition = null;
+
+  document.querySelector('#modal-add-recipe .modal-title').innerHTML =
+    '<i class="bi bi-pencil me-1"></i>Edit Recipe';
+
+  document.getElementById('ar-name').value         = recipe.name || '';
+  document.getElementById('ar-servings').value     = recipe.servings || 1;
+  document.getElementById('ar-instructions').value = recipe.instructions || '';
+
+  // Stored values are per-serving; the modal expects total-recipe nutrition
+  const srv = recipe.servings || 1;
+  const toTotal = v => (v != null ? Math.round(v * srv * 10) / 10 : '');
+  document.getElementById('ar-calories').value = recipe.calories != null ? Math.round(recipe.calories * srv) : '';
+  document.getElementById('ar-protein').value  = toTotal(recipe.protein_g);
+  document.getElementById('ar-carbs').value    = toTotal(recipe.carbs_g);
+  document.getElementById('ar-fat').value      = toTotal(recipe.fat_g);
+  document.getElementById('ar-fiber').value    = toTotal(recipe.fiber_g);
+
+  document.getElementById('ar-per-serving-preview').classList.add('d-none');
+  document.getElementById('ar-error').classList.add('d-none');
+  document.getElementById('ar-nutrition-panel').classList.add('d-none');
+  document.getElementById('ar-check-icon').classList.remove('d-none');
+
+  // Populate ingredient rows from existing data
+  const container = document.getElementById('ar-ingredients');
+  container.innerHTML = '';
+  if (recipe.ingredients?.length) {
+    for (const ing of recipe.ingredients) {
+      const [amt, unit] = splitQuantity(ing.quantity);
+      addIngredientRow(amt, unit, ing.name);
+    }
+  } else {
+    addIngredientRow();
+    addIngredientRow();
+  }
+
+  // Show Save immediately — we already have data
+  document.getElementById('ar-btn-save').classList.remove('d-none');
+  _updatePerServingPreview();
+
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('modal-add-recipe')).show();
+  setTimeout(() => document.getElementById('ar-name').focus(), 300);
+}
+
+
+async function reimportRecipe(url) {
+  const btn     = document.getElementById('btn-reimport-recipe');
+  const spinner = document.getElementById('reimport-spinner');
+  const icon    = document.getElementById('reimport-icon');
+  btn.disabled  = true;
+  spinner.classList.remove('d-none');
+  icon.classList.add('d-none');
+  try {
+    const recipe = await api.recipes.import(url);
+    toast(`"${recipe.name}" re-imported`);
+    await loadRecipes();
+    openRecipeModal(recipe.id);
+  } catch (e) {
+    toast(e.message, 'danger');
+  } finally {
+    btn.disabled = false;
+    spinner.classList.add('d-none');
+    icon.classList.remove('d-none');
+  }
+}
+
+
 // ── Import Modal ───────────────────────────────────────────────────────────────
 
 function openImportModal() {
@@ -514,7 +607,11 @@ async function handleImport() {
 let _pendingNutrition = null; // nutrition fetched but not yet saved
 
 function openManualAddModal() {
+  _editMode        = false;
+  _editingRecipeId = null;
   _pendingNutrition = null;
+  document.querySelector('#modal-add-recipe .modal-title').innerHTML =
+    '<i class="bi bi-journal-plus me-1"></i>Add Recipe';
   document.getElementById('ar-name').value         = '';
   document.getElementById('ar-servings').value     = '4';
   document.getElementById('ar-instructions').value = '';
@@ -754,21 +851,29 @@ async function saveManualRecipe() {
   const finalFiber = perServing(manualFiber ?? nutrition.fiber_g);
   const nutritionSource = hasManual ? 'manual' : (_pendingNutrition ? 'usda_estimate' : null);
 
+  const payload = {
+    name:             document.getElementById('ar-name').value.trim(),
+    servings,
+    calories:         finalCals,
+    protein_g:        finalProt,
+    carbs_g:          finalCarbs,
+    fat_g:            finalFat,
+    fiber_g:          finalFiber,
+    nutrition_source: nutritionSource,
+    ingredients,
+    instructions,
+  };
+
   try {
-    const recipe = await api.recipes.create({
-      name:         document.getElementById('ar-name').value.trim(),
-      servings,
-      calories:     finalCals,
-      protein_g:    finalProt,
-      carbs_g:      finalCarbs,
-      fat_g:        finalFat,
-      fiber_g:      finalFiber,
-      nutrition_source: nutritionSource,
-      ingredients,
-      instructions,
-    });
+    let recipe;
+    if (_editMode && _editingRecipeId) {
+      recipe = await api.recipes.update(_editingRecipeId, payload);
+      toast(`"${recipe.name}" updated`);
+    } else {
+      recipe = await api.recipes.create(payload);
+      toast(`"${recipe.name}" saved`);
+    }
     bootstrap.Modal.getOrCreateInstance(document.getElementById('modal-add-recipe')).hide();
-    toast(`"${recipe.name}" saved`);
     await loadRecipes();
     openRecipeModal(recipe.id);
   } catch (e) {

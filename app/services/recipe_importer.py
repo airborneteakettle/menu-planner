@@ -42,7 +42,7 @@ def _fetch_html(url: str, browserless_key: str | None = None, scrapingbee_key: s
         )
         log.info("IMPORT Browserless.io status: %s", bl_resp.status_code)
         if bl_resp.ok:
-            log.info("IMPORT using Browserless.io result (%d bytes)", len(bl_resp.text))
+            log.info("IMPORT using Browserless.io result (%d bytes): %s", len(bl_resp.text), bl_resp.text[:500])
             return bl_resp.text
         log.warning("IMPORT Browserless.io failed: %s — %s", bl_resp.status_code, bl_resp.text[:200])
     else:

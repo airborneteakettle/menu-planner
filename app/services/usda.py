@@ -8,6 +8,7 @@ NUTRIENT_IDS = {
     "protein_g": 1003,  # Protein
     "fat_g":     1004,  # Total lipid (fat)
     "carbs_g":   1005,  # Carbohydrate, by difference
+    "fiber_g":   1079,  # Fiber, total dietary
 }
 
 # Strips leading quantities/units so "2 cups diced chicken breast" → "chicken breast"
@@ -176,7 +177,7 @@ def lookup_ingredient_nutrition(ingredient: str, api_key: str) -> dict | None:
 
 def estimate_recipe_nutrition(ingredients: list[str], api_key: str) -> dict:
     """Sum scaled nutrition across all ingredient strings."""
-    totals = {"calories": 0.0, "protein_g": 0.0, "fat_g": 0.0, "carbs_g": 0.0}
+    totals = {"calories": 0.0, "protein_g": 0.0, "fat_g": 0.0, "carbs_g": 0.0, "fiber_g": 0.0}
     for ingredient in ingredients:
         nutrition = lookup_ingredient_nutrition(ingredient, api_key)
         if nutrition:

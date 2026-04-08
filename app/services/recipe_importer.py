@@ -43,6 +43,7 @@ def import_recipe_from_url(url: str, usda_api_key: str) -> dict:
     protein_g = _parse_numeric(page_nutrition.get("proteinContent"))
     fat_g     = _parse_numeric(page_nutrition.get("fatContent"))
     carbs_g   = _parse_numeric(page_nutrition.get("carbohydrateContent"))
+    fiber_g   = _parse_numeric(page_nutrition.get("fiberContent"))
 
     # --- USDA fallback if any macro is missing ---
     if None in (calories, protein_g, fat_g, carbs_g) and ingredients:
@@ -53,6 +54,7 @@ def import_recipe_from_url(url: str, usda_api_key: str) -> dict:
         protein_g = protein_g or (usda.get("protein_g") or 0) / srv or None
         fat_g     = fat_g     or (usda.get("fat_g")     or 0) / srv or None
         carbs_g   = carbs_g   or (usda.get("carbs_g")   or 0) / srv or None
+        fiber_g   = fiber_g   or (usda.get("fiber_g")   or 0) / srv or None
 
     name = ""
     try:
@@ -91,6 +93,7 @@ def import_recipe_from_url(url: str, usda_api_key: str) -> dict:
         "protein_g": protein_g,
         "fat_g": fat_g,
         "carbs_g": carbs_g,
+        "fiber_g": fiber_g,
         "instructions": instructions,
         "ingredients": parsed_ingredients,
         "source_url": url,

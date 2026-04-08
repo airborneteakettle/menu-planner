@@ -150,6 +150,7 @@ def import_recipe():
         protein_g        = scraped.get("protein_g"),
         fat_g            = scraped.get("fat_g"),
         carbs_g          = scraped.get("carbs_g"),
+        fiber_g          = scraped.get("fiber_g"),
         instructions     = scraped.get("instructions"),
         source_url       = scraped.get("source_url"),
         nutrition_source = scraped.get("nutrition_source"),

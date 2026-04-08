@@ -522,6 +522,7 @@ function openManualAddModal() {
   document.getElementById('ar-protein').value      = '';
   document.getElementById('ar-carbs').value        = '';
   document.getElementById('ar-fat').value          = '';
+  document.getElementById('ar-per-serving-preview').classList.add('d-none');
   document.getElementById('ar-error').classList.add('d-none');
   document.getElementById('ar-nutrition-panel').classList.add('d-none');
   document.getElementById('ar-btn-save').classList.add('d-none');
@@ -551,6 +552,24 @@ function _updateSaveVisibility() {
   const anyMacro = [...document.querySelectorAll('.ar-macro')]
     .some(el => el.value.trim() !== '');
   document.getElementById('ar-btn-save').classList.toggle('d-none', !anyMacro && !_pendingNutrition);
+  _updatePerServingPreview();
+}
+
+function _updatePerServingPreview() {
+  const preview  = document.getElementById('ar-per-serving-preview');
+  const servings = +document.getElementById('ar-servings').value || 1;
+  const cals  = parseFloat(document.getElementById('ar-calories').value);
+  const prot  = parseFloat(document.getElementById('ar-protein').value);
+  const carbs = parseFloat(document.getElementById('ar-carbs').value);
+  const fat   = parseFloat(document.getElementById('ar-fat').value);
+
+  const anyFilled = [cals, prot, carbs, fat].some(v => !isNaN(v) && v > 0);
+  if (!anyFilled || servings <= 1) { preview.classList.add('d-none'); return; }
+
+  const fmt1 = v => isNaN(v) ? '—' : Math.round(v / servings);
+  preview.textContent =
+    `Per serving (÷${servings}): ${fmt1(cals)} kcal · ${fmt1(prot)}g protein · ${fmt1(carbs)}g carbs · ${fmt1(fat)}g fat`;
+  preview.classList.remove('d-none');
 }
 
 function setupManualAddModal() {
@@ -560,6 +579,7 @@ function setupManualAddModal() {
   document.querySelectorAll('.ar-macro').forEach(el =>
     el.addEventListener('input', _updateSaveVisibility)
   );
+  document.getElementById('ar-servings').addEventListener('input', _updatePerServingPreview);
 }
 
 function addIngredientRow(amount = '', unit = '', name = '') {
@@ -715,20 +735,20 @@ async function saveManualRecipe() {
   const instructions = document.getElementById('ar-instructions').value.trim() || null;
   const servings = +document.getElementById('ar-servings').value || 1;
 
-  // Manual macro fields — already per-serving, take precedence over USDA estimate
+  // Manual macro fields are total recipe nutrition — divide by servings, same as USDA
   const manualCals  = parseFloat(document.getElementById('ar-calories').value) || null;
   const manualProt  = parseFloat(document.getElementById('ar-protein').value)  || null;
   const manualCarbs = parseFloat(document.getElementById('ar-carbs').value)    || null;
   const manualFat   = parseFloat(document.getElementById('ar-fat').value)      || null;
   const hasManual   = manualCals || manualProt || manualCarbs || manualFat;
 
-  // USDA totals need dividing by servings; manual values are already per-serving
-  const perServing = (v) => (v || null) && (v / servings);
+  // Both manual totals and USDA totals are divided by servings before storing
+  const perServing = (v) => (v || null) && Math.round((v / servings) * 10) / 10;
 
-  const finalCals  = manualCals  ?? perServing(nutrition.calories);
-  const finalProt  = manualProt  ?? perServing(nutrition.protein_g);
-  const finalCarbs = manualCarbs ?? perServing(nutrition.carbs_g);
-  const finalFat   = manualFat   ?? perServing(nutrition.fat_g);
+  const finalCals  = perServing(manualCals  ?? nutrition.calories);
+  const finalProt  = perServing(manualProt  ?? nutrition.protein_g);
+  const finalCarbs = perServing(manualCarbs ?? nutrition.carbs_g);
+  const finalFat   = perServing(manualFat   ?? nutrition.fat_g);
   const nutritionSource = hasManual ? 'manual' : (_pendingNutrition ? 'usda_estimate' : null);
 
   try {

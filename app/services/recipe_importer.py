@@ -41,10 +41,11 @@ def _fetch_html(url: str, browserless_key: str | None = None, scrapingbee_key: s
             timeout=30,
         )
         log.info("IMPORT Browserless.io status: %s", bl_resp.status_code)
-        if bl_resp.ok:
-            log.info("IMPORT using Browserless.io result (%d bytes): %s", len(bl_resp.text), bl_resp.text[:500])
+        if bl_resp.ok and len(bl_resp.text) > 10_000:
+            log.info("IMPORT using Browserless.io result (%d bytes)", len(bl_resp.text))
             return bl_resp.text
-        log.warning("IMPORT Browserless.io failed: %s — %s", bl_resp.status_code, bl_resp.text[:200])
+        log.warning("IMPORT Browserless.io blocked or empty (%d bytes): %s",
+                    len(bl_resp.text), bl_resp.text[:300])
     else:
         log.warning("IMPORT no Browserless API key configured — skipping")
 

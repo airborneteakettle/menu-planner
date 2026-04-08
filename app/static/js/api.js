@@ -43,6 +43,11 @@ export const api = {
       add:    (data)    => req('/menu/custom-items', { method: 'POST', body: JSON.stringify(data) }),
       remove: (id)      => req(`/menu/custom-items/${id}`, { method: 'DELETE' }),
     },
+    shoppingChecked: {
+      get:   (weekStart)              => req(`/menu/shopping-checked?week_start=${weekStart}`),
+      set:   (weekStart, key, checked) => req('/menu/shopping-checked', { method: 'POST', body: JSON.stringify({ week_start: weekStart, item_key: key, checked }) }),
+      clear: (weekStart)              => req(`/menu/shopping-checked?week_start=${weekStart}`, { method: 'DELETE' }),
+    },
   },
   goals: {
     list:    () => req('/goals/'),

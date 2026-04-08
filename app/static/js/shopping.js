@@ -4,16 +4,8 @@ import { getWeekDates, formatDate, toast } from './utils.js';
 let _el            = null;
 let shoppingOffset = 0;
 let _categories    = []; // recipe categories for the current week
-
-const CHECKED_KEY = 'menu-planner-checked';
-
-function getChecked() {
-  try { return new Set(JSON.parse(localStorage.getItem(CHECKED_KEY) || '[]')); }
-  catch { return new Set(); }
-}
-function saveChecked(set) {
-  localStorage.setItem(CHECKED_KEY, JSON.stringify([...set]));
-}
+let _checkedKeys   = new Set();
+let _weekStart     = '';
 
 export async function renderShopping(el) {
   _el = el;
@@ -128,10 +120,13 @@ async function loadList() {
   body.innerHTML = `<div class="loading-state"><div class="spinner-border text-success"></div></div>`;
 
   try {
-    const [data, custom] = await Promise.all([
+    const [data, custom, checkedArr] = await Promise.all([
       api.menu.shopping(start, end),
       api.menu.customItems.list(),
+      api.menu.shoppingChecked.get(start),
     ]);
+    _checkedKeys = new Set(checkedArr);
+    _weekStart   = start;
     renderList(body, data, custom);
   } catch (e) {
     body.innerHTML = `<div class="alert alert-danger">${e.message}</div>`;
@@ -140,8 +135,7 @@ async function loadList() {
 
 function shopItemHtml(item, isCustom = false) {
   const key       = isCustom ? `custom-${item.id}` : item.name.toLowerCase();
-  const checked   = getChecked();
-  const isChecked = checked.has(key);
+  const isChecked = _checkedKeys.has(key);
   return `
     <div class="shop-item${isChecked ? ' checked' : ''}" data-key="${key}"
          ${isCustom ? `data-custom-id="${item.id}"` : ''}>
@@ -243,22 +237,27 @@ function renderList(body, data, custom = []) {
 
   // Checkbox toggle
   body.querySelectorAll('.shop-item input[type=checkbox]').forEach(cb => {
-    cb.addEventListener('change', () => {
+    cb.addEventListener('change', async () => {
       const row = cb.closest('.shop-item');
-      const set = getChecked();
-      cb.checked ? set.add(row.dataset.key) : set.delete(row.dataset.key);
-      saveChecked(set);
+      const key = row.dataset.key;
+      cb.checked ? _checkedKeys.add(key) : _checkedKeys.delete(key);
       row.classList.toggle('checked', cb.checked);
+      try {
+        await api.menu.shoppingChecked.set(_weekStart, key, cb.checked);
+      } catch (e) { toast(e.message, 'danger'); }
     });
   });
 
   // Clear all checks
-  body.querySelector('#btn-clear-checks')?.addEventListener('click', () => {
-    saveChecked(new Set());
+  body.querySelector('#btn-clear-checks')?.addEventListener('click', async () => {
     body.querySelectorAll('.shop-item').forEach(row => {
       row.classList.remove('checked');
       row.querySelector('input[type=checkbox]').checked = false;
     });
+    _checkedKeys.clear();
+    try {
+      await api.menu.shoppingChecked.clear(_weekStart);
+    } catch (e) { toast(e.message, 'danger'); }
   });
 
   // Wire delete on existing custom rows

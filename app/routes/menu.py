@@ -5,7 +5,7 @@ from app import db
 from app.models.menu import MenuEntry, MenuEntryShare
 from app.models.recipe import Recipe, Tag
 from app.models.goals import DietGoal
-from app.models.shopping import CustomShoppingItem
+from app.models.shopping import CustomShoppingItem, ShoppingCheckedItem
 from app.models.household import HouseholdMember
 from app.services.shopping import generate_shopping_list
 from datetime import date, timedelta
@@ -284,5 +284,50 @@ def delete_custom_item(item_id):
     item = CustomShoppingItem.query.filter_by(id=item_id, user_id=current_user.id)\
                                    .first_or_404()
     db.session.delete(item)
+    db.session.commit()
+    return "", 204
+
+
+# ── Shopping checkmarks ────────────────────────────────────────────────────────
+
+@bp.route("/shopping-checked", methods=["GET"])
+def get_shopping_checked():
+    week_start = request.args.get("week_start", "")
+    rows = ShoppingCheckedItem.query.filter_by(
+        user_id=current_user.id, week_start=week_start
+    ).all()
+    return jsonify([r.item_key for r in rows])
+
+
+@bp.route("/shopping-checked", methods=["POST"])
+def set_shopping_checked():
+    data       = request.get_json() or {}
+    week_start = data.get("week_start", "")
+    item_key   = (data.get("item_key") or "").strip()
+    checked    = data.get("checked", True)
+    if not item_key:
+        return jsonify({"error": "item_key required"}), 400
+
+    row = ShoppingCheckedItem.query.filter_by(
+        user_id=current_user.id, week_start=week_start, item_key=item_key
+    ).first()
+    if checked:
+        if not row:
+            db.session.add(ShoppingCheckedItem(
+                user_id=current_user.id, week_start=week_start, item_key=item_key
+            ))
+    else:
+        if row:
+            db.session.delete(row)
+    db.session.commit()
+    return "", 204
+
+
+@bp.route("/shopping-checked", methods=["DELETE"])
+def clear_shopping_checked():
+    week_start = request.args.get("week_start", "")
+    ShoppingCheckedItem.query.filter_by(
+        user_id=current_user.id, week_start=week_start
+    ).delete()
     db.session.commit()
     return "", 204

@@ -30,20 +30,56 @@ def _parse_servings(yields_str: str | None) -> int:
     return int(match.group()) if match else 1
 
 
+def _fetch_html(url: str) -> str:
+    """Fetch page HTML, falling back to Playwright on 403."""
+    resp = requests.get(url, headers=_HEADERS, timeout=15, allow_redirects=True)
+    if resp.status_code != 403:
+        resp.raise_for_status()
+        return resp.text
+
+    # 403 — likely Cloudflare JS challenge, try Playwright
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        raise ValueError("403 Forbidden and Playwright is not installed.")
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(
+            headless=True,
+            args=["--no-sandbox", "--disable-dev-shm-usage"],
+        )
+        page = browser.new_page(extra_http_headers={
+            "Accept-Language": "en-US,en;q=0.9",
+        })
+        page.goto(url, wait_until="domcontentloaded", timeout=30000)
+        html = page.content()
+        browser.close()
+    return html
+
+
 def import_recipe_from_url(url: str, usda_api_key: str) -> dict:
     """
     Scrape a recipe URL and return a structured dict ready to insert into the DB.
-    Falls back to USDA ingredient lookup if the page doesn't provide nutrition.
+    Falls back to Playwright for Cloudflare-protected sites, then to USDA for nutrition.
     """
-    resp = requests.get(url, headers=_HEADERS, timeout=15, allow_redirects=True)
-    if resp.status_code == 403:
-        raise ValueError(f"403 Forbidden — {url} is blocking server-side requests (Cloudflare or similar)")
-    resp.raise_for_status()
-    scraper = scrape_html(resp.text, org_url=url)
+    html = _fetch_html(url)
+    scraper = scrape_html(html, org_url=url)
 
     ingredients = []
     try:
         ingredients = scraper.ingredients() or []
+    except Exception:
+        pass
+
+    name = ""
+    try:
+        name = scraper.title() or ""
+    except Exception:
+        pass
+
+    servings = 1
+    try:
+        servings = _parse_servings(scraper.yields())
     except Exception:
         pass
 
@@ -63,7 +99,6 @@ def import_recipe_from_url(url: str, usda_api_key: str) -> dict:
     # --- USDA fallback if any macro is missing ---
     if None in (calories, protein_g, fat_g, carbs_g) and ingredients:
         usda = estimate_recipe_nutrition(ingredients, usda_api_key)
-        # USDA returns totals for the whole recipe; divide by servings to get per-serving
         srv = servings or 1
         calories  = calories  or (usda.get("calories")  or 0) / srv or None
         protein_g = protein_g or (usda.get("protein_g") or 0) / srv or None
@@ -71,23 +106,14 @@ def import_recipe_from_url(url: str, usda_api_key: str) -> dict:
         carbs_g   = carbs_g   or (usda.get("carbs_g")   or 0) / srv or None
         fiber_g   = fiber_g   or (usda.get("fiber_g")   or 0) / srv or None
 
-    name = ""
-    try:
-        name = scraper.title() or ""
-    except Exception:
-        pass
-
-    servings = 1
-    try:
-        servings = _parse_servings(scraper.yields())
-    except Exception:
-        pass
-
     instructions = None
     try:
         steps = scraper.instructions_list()
         if steps:
-            instructions = '\n'.join(f"{i + 1}. {step.strip()}" for i, step in enumerate(steps) if step.strip())
+            instructions = '\n'.join(
+                f"{i + 1}. {step.strip()}"
+                for i, step in enumerate(steps) if step.strip()
+            )
     except Exception:
         pass
     if not instructions:

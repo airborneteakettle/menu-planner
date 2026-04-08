@@ -108,22 +108,22 @@ async function loadGoals() {
           <div class="row g-3">
             <div class="col-sm-6 col-md-4">
               <label class="form-label fw-medium">Daily Calories (kcal)</label>
-              <input type="number" class="form-control" name="calories_target" min="0" step="50"
+              <input type="number" class="form-control" name="calories_target" min="0" step="1"
                      value="${current?.calories_target ?? ''}" placeholder="e.g. 1800">
             </div>
             <div class="col-sm-6 col-md-4">
               <label class="form-label fw-medium">Protein (g)</label>
-              <input type="number" class="form-control" name="protein_g_target" min="0" step="5"
+              <input type="number" class="form-control" name="protein_g_target" min="0" step="1"
                      value="${current?.protein_g_target ?? ''}" placeholder="e.g. 150">
             </div>
             <div class="col-sm-6 col-md-4">
               <label class="form-label fw-medium">Carbs (g)</label>
-              <input type="number" class="form-control" name="carbs_g_target" min="0" step="5"
+              <input type="number" class="form-control" name="carbs_g_target" min="0" step="1"
                      value="${current?.carbs_g_target ?? ''}" placeholder="e.g. 200">
             </div>
             <div class="col-sm-6 col-md-4">
               <label class="form-label fw-medium">Fat (g)</label>
-              <input type="number" class="form-control" name="fat_g_target" min="0" step="5"
+              <input type="number" class="form-control" name="fat_g_target" min="0" step="1"
                      value="${current?.fat_g_target ?? ''}" placeholder="e.g. 65">
             </div>
             <div class="col-sm-6 col-md-4">

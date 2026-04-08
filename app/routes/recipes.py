@@ -145,6 +145,32 @@ def import_recipe():
     except Exception as e:
         return jsonify({"error": f"Failed to scrape recipe: {e}"}), 422
 
+    source_url = scraped.get("source_url")
+    existing   = Recipe.query.filter_by(source_url=source_url).first() if source_url else None
+
+    if existing:
+        # Update fields but preserve meal_type and ratings set by the user
+        existing.name             = scraped["name"]
+        existing.servings         = scraped.get("servings", 1)
+        existing.calories         = scraped.get("calories")
+        existing.protein_g        = scraped.get("protein_g")
+        existing.fat_g            = scraped.get("fat_g")
+        existing.carbs_g          = scraped.get("carbs_g")
+        existing.fiber_g          = scraped.get("fiber_g")
+        existing.instructions     = scraped.get("instructions")
+        existing.nutrition_source = scraped.get("nutrition_source")
+        # Replace ingredients
+        for ing in list(existing.ingredients):
+            db.session.delete(ing)
+        db.session.flush()
+        for ing in scraped.get("ingredients", []):
+            existing.ingredients.append(Ingredient(name=ing["name"], quantity=ing.get("quantity")))
+        apply_auto_tags(existing)
+        db.session.commit()
+        result = _attach_goal_comparison(existing.to_dict())
+        result["_updated"] = True
+        return jsonify(result), 200
+
     recipe = Recipe(
         name             = scraped["name"],
         servings         = scraped.get("servings", 1),
@@ -154,7 +180,7 @@ def import_recipe():
         carbs_g          = scraped.get("carbs_g"),
         fiber_g          = scraped.get("fiber_g"),
         instructions     = scraped.get("instructions"),
-        source_url       = scraped.get("source_url"),
+        source_url       = source_url,
         nutrition_source = scraped.get("nutrition_source"),
         # meal_type intentionally not set — user sets this manually
     )

@@ -496,7 +496,7 @@ async function handleImport() {
   try {
     const recipe = await api.recipes.import(url);
     bootstrap.Modal.getOrCreateInstance(document.getElementById('modal-import')).hide();
-    toast(`"${recipe.name}" imported`);
+    toast(recipe._updated ? `"${recipe.name}" updated` : `"${recipe.name}" imported`);
     await loadRecipes();
     openRecipeModal(recipe.id);
   } catch (e) {

@@ -1,8 +1,9 @@
 import { api }                            from './api.js';
 import { getWeekDates, formatDate, toast } from './utils.js';
 
-let _el         = null;
+let _el            = null;
 let shoppingOffset = 0;
+let _categories    = []; // recipe categories for the current week
 
 const CHECKED_KEY = 'menu-planner-checked';
 
@@ -33,6 +34,38 @@ export async function renderShopping(el) {
     </div>
     <div id="shop-body">
       <div class="loading-state"><div class="spinner-border text-success"></div></div>
+    </div>
+
+    <!-- Add Item Modal (lives outside shop-body so it survives reloads) -->
+    <div class="modal fade" id="add-item-modal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+          <div class="modal-header py-2">
+            <h6 class="modal-title mb-0"><i class="bi bi-plus-circle me-1"></i>Add Item</h6>
+            <button type="button" class="btn-close btn-sm" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body pb-2">
+            <div class="mb-2">
+              <label class="form-label small mb-1">Qty</label>
+              <input class="form-control form-control-sm" id="modal-qty-input" placeholder="e.g. 2 cups">
+            </div>
+            <div class="mb-2">
+              <label class="form-label small mb-1">Item name <span class="text-danger">*</span></label>
+              <input class="form-control form-control-sm" id="modal-name-input" placeholder="e.g. olive oil">
+            </div>
+            <div class="mb-1">
+              <label class="form-label small mb-1">Category</label>
+              <select class="form-select form-select-sm" id="modal-category-select"></select>
+            </div>
+          </div>
+          <div class="modal-footer py-2">
+            <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+            <button type="button" class="btn btn-success btn-sm" id="modal-save-btn">
+              <i class="bi bi-plus-lg me-1"></i>Add
+            </button>
+          </div>
+        </div>
+      </div>
     </div>`;
 
   document.getElementById('shop-prev').addEventListener('click',  () => { shoppingOffset--; loadList(); });
@@ -40,8 +73,47 @@ export async function renderShopping(el) {
   document.getElementById('shop-today').addEventListener('click', () => { shoppingOffset = 0; loadList(); });
   document.getElementById('btn-print-list').addEventListener('click', printList);
 
+  // Modal save – single persistent listener (modal lives outside shop-body)
+  document.getElementById('modal-save-btn').addEventListener('click', saveModalItem);
+  document.getElementById('modal-name-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') saveModalItem();
+  });
+
   await loadList();
 }
+
+// ── Modal ──────────────────────────────────────────────────────────────────────
+
+function openAddModal(prefilledCategory = '') {
+  const select = document.getElementById('modal-category-select');
+  const options = [..._categories];
+  if (!options.includes('Miscellaneous')) options.push('Miscellaneous');
+
+  select.innerHTML = options.map(c =>
+    `<option value="${c}"${c === prefilledCategory ? ' selected' : ''}>${c}</option>`
+  ).join('');
+
+  // Clear inputs
+  document.getElementById('modal-name-input').value = '';
+  document.getElementById('modal-qty-input').value  = '';
+
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('add-item-modal')).show();
+  setTimeout(() => document.getElementById('modal-name-input').focus(), 350);
+}
+
+async function saveModalItem() {
+  const name = document.getElementById('modal-name-input').value.trim();
+  if (!name) { document.getElementById('modal-name-input').focus(); return; }
+  const qty      = document.getElementById('modal-qty-input').value.trim() || null;
+  const category = document.getElementById('modal-category-select').value || 'Miscellaneous';
+  try {
+    await api.menu.customItems.add({ name, quantity: qty, category });
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('add-item-modal')).hide();
+    await loadList();
+  } catch (e) { toast(e.message, 'danger'); }
+}
+
+// ── Load / render ──────────────────────────────────────────────────────────────
 
 async function loadList() {
   const { start, end } = getWeekDates(shoppingOffset);
@@ -56,73 +128,131 @@ async function loadList() {
   body.innerHTML = `<div class="loading-state"><div class="spinner-border text-success"></div></div>`;
 
   try {
-    const data = await api.menu.shopping(start, end);
-    renderList(body, data);
+    const [data, custom] = await Promise.all([
+      api.menu.shopping(start, end),
+      api.menu.customItems.list(),
+    ]);
+    renderList(body, data, custom);
   } catch (e) {
     body.innerHTML = `<div class="alert alert-danger">${e.message}</div>`;
   }
 }
 
-function renderList(body, data) {
-  const checked = getChecked();
+function shopItemHtml(item, isCustom = false) {
+  const key       = isCustom ? `custom-${item.id}` : item.name.toLowerCase();
+  const checked   = getChecked();
+  const isChecked = checked.has(key);
+  return `
+    <div class="shop-item${isChecked ? ' checked' : ''}" data-key="${key}"
+         ${isCustom ? `data-custom-id="${item.id}"` : ''}>
+      <input type="checkbox" ${isChecked ? 'checked' : ''}>
+      <span class="shop-item-qty">${(item.quantity || '').trim()}</span>
+      <span class="shop-item-name">${item.name.trim()}</span>
+      ${!isCustom && item.recipes?.length
+        ? `<span class="shop-item-recipes">${item.recipes.join(', ')}</span>`
+        : ''}
+      ${isCustom
+        ? `<button class="btn-remove-custom ms-auto" data-id="${item.id}" title="Remove">
+             <i class="bi bi-x"></i>
+           </button>`
+        : ''}
+    </div>`;
+}
 
-  if (!data.total_items) {
-    body.innerHTML = `
-      <div class="text-center text-muted py-5">
-        <i class="bi bi-bag-x fs-1 d-block mb-2"></i>
-        No meals planned for this week yet.<br>
-        <a href="#planner">Open the planner</a> to build your menu.
-      </div>`;
-    return;
+function categorySection(cat, recipeItems, customItems) {
+  const totalCount = recipeItems.length + customItems.length;
+  const isMisc = cat === 'Miscellaneous';
+  const icon   = isMisc ? 'bi-collection-fill' : 'bi-tag-fill';
+  return `
+    <div class="mb-4" data-section-category="${escAttr(cat)}">
+      <div class="shop-category-header">
+        <i class="bi ${icon} me-1"></i>${escHtml(cat)}
+        <span class="text-muted fw-normal ms-1 section-count">(${totalCount})</span>
+      </div>
+      <div class="section-items">
+        ${recipeItems.map(i => shopItemHtml(i)).join('')}
+        ${customItems.map(i => shopItemHtml(i, true)).join('')}
+      </div>
+      <button class="btn-add-to-category" data-category="${escAttr(cat)}">
+        <i class="bi bi-plus-sm"></i> Add Item
+      </button>
+    </div>`;
+}
+
+function renderList(body, data, custom = []) {
+  // Group custom items by category
+  const customByCat = {};
+  for (const item of custom) {
+    const cat = item.category || 'Miscellaneous';
+    (customByCat[cat] = customByCat[cat] || []).push(item);
   }
 
-  const categories = data.list;
-  const html = Object.entries(categories).map(([cat, items]) => `
-    <div class="mb-4">
-      <div class="shop-category-header">
-        <i class="bi bi-tag-fill me-1"></i>${cat}
-        <span class="text-muted fw-normal ms-1">(${items.length})</span>
-      </div>
-      ${items.map(item => {
-        const key     = item.name.toLowerCase();
-        const isChecked = checked.has(key);
-        return `
-          <div class="shop-item${isChecked ? ' checked' : ''}" data-key="${key}">
-            <input type="checkbox" ${isChecked ? 'checked' : ''}>
-            <div class="flex-grow-1">
-              <span class="shop-item-name">${item.name}</span>
-              ${item.recipes?.length
-                ? `<div class="shop-item-recipes">Used in: ${item.recipes.join(', ')}</div>`
-                : ''}
-            </div>
-          </div>`;
-      }).join('')}
-    </div>`).join('');
+  // Recipe categories (preserve server order)
+  const recipeCats = Object.keys(data.list || {});
+  _categories = recipeCats; // expose for modal dropdown
+
+  const sections = [];
+
+  // Recipe categories + their custom items merged in
+  for (const cat of recipeCats) {
+    sections.push(categorySection(cat, data.list[cat], customByCat[cat] || []));
+  }
+
+  // Custom-item-only categories (not Miscellaneous, not already in recipe cats)
+  for (const cat of Object.keys(customByCat)) {
+    if (cat !== 'Miscellaneous' && !recipeCats.includes(cat)) {
+      sections.push(categorySection(cat, [], customByCat[cat]));
+    }
+  }
+
+  // Miscellaneous always last
+  sections.push(categorySection('Miscellaneous', [], customByCat['Miscellaneous'] || []));
+
+  const noMeals = recipeCats.length === 0
+    ? `<p class="text-muted small fst-italic mb-3">No meals planned — <a href="#planner">open the planner</a> to build your menu.</p>`
+    : '';
 
   body.innerHTML = `
     <div class="row">
       <div class="col-lg-8">
         <div class="d-flex justify-content-between align-items-center mb-3 small text-muted">
-          <span>${data.total_items} items total</span>
-          <button class="btn btn-link btn-sm p-0 text-muted" id="btn-clear-checks">
-            Clear all checks
-          </button>
+          <span>${data.total_items} recipe items</span>
+          <div class="d-flex align-items-center gap-2">
+            <button class="btn btn-outline-success btn-sm" id="btn-add-item-top">
+              <i class="bi bi-plus-lg me-1"></i>Add Item
+            </button>
+            <button class="btn btn-link btn-sm p-0 text-muted" id="btn-clear-checks">
+              Clear all checks
+            </button>
+          </div>
         </div>
-        ${html}
+        ${noMeals}
+        ${sections.join('')}
       </div>
     </div>`;
 
+  // Top "+ Add Item" (no pre-filled category — defaults to first available)
+  body.querySelector('#btn-add-item-top').addEventListener('click', () => {
+    openAddModal(_categories[0] || 'Miscellaneous');
+  });
+
+  // Per-section "+ Add Item" buttons
+  body.querySelectorAll('.btn-add-to-category').forEach(btn => {
+    btn.addEventListener('click', () => openAddModal(btn.dataset.category));
+  });
+
+  // Checkbox toggle
   body.querySelectorAll('.shop-item input[type=checkbox]').forEach(cb => {
     cb.addEventListener('change', () => {
       const row = cb.closest('.shop-item');
-      const key = row.dataset.key;
       const set = getChecked();
-      cb.checked ? set.add(key) : set.delete(key);
+      cb.checked ? set.add(row.dataset.key) : set.delete(row.dataset.key);
       saveChecked(set);
       row.classList.toggle('checked', cb.checked);
     });
   });
 
+  // Clear all checks
   body.querySelector('#btn-clear-checks')?.addEventListener('click', () => {
     saveChecked(new Set());
     body.querySelectorAll('.shop-item').forEach(row => {
@@ -130,7 +260,40 @@ function renderList(body, data) {
       row.querySelector('input[type=checkbox]').checked = false;
     });
   });
+
+  // Wire delete on existing custom rows
+  body.querySelectorAll('[data-custom-id]').forEach(wireCustomDelete);
 }
+
+function wireCustomDelete(row) {
+  row.querySelector('.btn-remove-custom')?.addEventListener('click', async () => {
+    const id = +row.dataset.customId;
+    try {
+      await api.menu.customItems.remove(id);
+      // Update section item count
+      const section = row.closest('[data-section-category]');
+      row.remove();
+      if (section) refreshSectionCount(section);
+    } catch (e) { toast(e.message, 'danger'); }
+  });
+}
+
+function refreshSectionCount(section) {
+  const n   = section.querySelectorAll('.shop-item').length;
+  const el  = section.querySelector('.section-count');
+  if (el) el.textContent = `(${n})`;
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function escAttr(s) {
+  return s.replace(/"/g, '&quot;');
+}
+
+// ── Print ─────────────────────────────────────────────────────────────────────
 
 function printList() {
   const content = document.getElementById('shop-body')?.innerHTML || '';
@@ -148,7 +311,7 @@ function printList() {
       .shop-item.checked .shop-item-name { text-decoration: line-through; color: #aaa; }
       .shop-item-recipes { font-size: 10px; color: #999; }
       input[type=checkbox] { width: 14px; height: 14px; }
-      .btn, .loading-state, #btn-clear-checks, button { display: none !important; }
+      .btn, .loading-state, #btn-clear-checks, #btn-add-item-top, .btn-add-to-category, button { display: none !important; }
     </style>
     </head><body>
     <h1>Shopping List &mdash; ${week}</h1>

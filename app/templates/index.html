@@ -25,6 +25,7 @@
         <li class="nav-item"><a class="nav-link" href="#planner"><i class="bi bi-calendar-week me-1"></i>Planner</a></li>
         <li class="nav-item"><a class="nav-link" href="#shopping"><i class="bi bi-bag-check me-1"></i>Shopping</a></li>
         <li class="nav-item"><a class="nav-link" href="#goals"><i class="bi bi-bullseye me-1"></i>Goals</a></li>
+        <li class="nav-item"><a class="nav-link" href="#settings"><i class="bi bi-gear me-1"></i>Settings</a></li>
       </ul>
     </div>
   </div>
@@ -36,9 +37,74 @@
   <div id="view-planner"   class="view d-none"></div>
   <div id="view-shopping"  class="view d-none"></div>
   <div id="view-goals"     class="view d-none"></div>
+  <div id="view-settings"  class="view d-none"></div>
 </main>
 
 <div id="toast-container" class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index:9999"></div>
+
+<!-- Modal: Manual Add Recipe -->
+<div class="modal fade" id="modal-add-recipe" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-journal-plus me-1"></i>Add Recipe</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+
+        <!-- Name + Servings -->
+        <div class="row g-3 mb-3">
+          <div class="col-sm-8">
+            <label class="form-label fw-medium" for="ar-name">Recipe Name <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" id="ar-name" placeholder="e.g. Grilled Chicken Salad">
+          </div>
+          <div class="col-sm-4">
+            <label class="form-label fw-medium" for="ar-servings">Servings</label>
+            <input type="number" class="form-control" id="ar-servings" value="4" min="1" step="1">
+          </div>
+        </div>
+
+        <!-- Ingredients -->
+        <div class="mb-3">
+          <label class="form-label fw-medium">Ingredients</label>
+          <div id="ar-ingredients">
+            <!-- rows injected by JS -->
+          </div>
+          <button type="button" class="btn btn-outline-secondary btn-sm mt-2" id="ar-add-ingredient">
+            <i class="bi bi-plus-lg me-1"></i>Add Ingredient
+          </button>
+        </div>
+
+        <!-- Instructions -->
+        <div class="mb-3">
+          <label class="form-label fw-medium" for="ar-instructions">Instructions <span class="text-muted fw-normal">(optional)</span></label>
+          <textarea class="form-control" id="ar-instructions" rows="4"
+                    placeholder="Step 1. Preheat oven…&#10;Step 2. Mix ingredients…"></textarea>
+        </div>
+
+        <!-- Nutrition result (hidden until checked) -->
+        <div id="ar-nutrition-panel" class="d-none border rounded p-3 bg-light mb-1">
+          <div class="small fw-semibold text-muted text-uppercase mb-2" style="font-size:.7rem;letter-spacing:.05em">
+            Estimated Nutrition <span class="badge badge-usda ms-1">USDA estimate</span>
+          </div>
+          <div class="row text-center g-0" id="ar-nutrition-values"></div>
+        </div>
+        <div id="ar-error" class="alert alert-danger d-none mt-2"></div>
+
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-outline-success" id="ar-btn-check">
+          <span class="spinner-border spinner-border-sm d-none me-1" id="ar-spinner"></span>
+          <i class="bi bi-search me-1" id="ar-check-icon"></i>Check Nutrition
+        </button>
+        <button class="btn btn-success d-none" id="ar-btn-save">
+          <i class="bi bi-floppy me-1"></i>Save Recipe
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- Modal: Import Recipe -->
 <div class="modal fade" id="modal-import" tabindex="-1">

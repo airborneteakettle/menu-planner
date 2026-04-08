@@ -17,11 +17,12 @@ export const api = {
     list:      (p = {})       => req('/recipes/?' + new URLSearchParams(p)),
     get:       (id)           => req(`/recipes/${id}`),
     import:    (url)          => req('/recipes/import', { method: 'POST', body: JSON.stringify({ url }) }),
+    estimateNutrition: (ings) => req('/recipes/estimate-nutrition', { method: 'POST', body: JSON.stringify({ ingredients: ings }) }),
     create:    (data)         => req('/recipes/', { method: 'POST', body: JSON.stringify(data) }),
     update:    (id, data)     => req(`/recipes/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     setRating: (id, rating)   => req(`/recipes/${id}/rating`, { method: 'PATCH', body: JSON.stringify({ rating }) }),
     delete:    (id)           => req(`/recipes/${id}`, { method: 'DELETE' }),
-    tags:      ()             => req('/recipes/tags/'),
+    tags:      (p = {})       => req('/recipes/tags/?' + new URLSearchParams(p)),
   },
   menu: {
     week:     ()        => req('/menu/week'),
@@ -30,10 +31,18 @@ export const api = {
     remove:   (id)      => req(`/menu/${id}`, { method: 'DELETE' }),
     summary:  (date)    => req(`/menu/daily-summary?date=${date}`),
     shopping: (s, e)    => req(`/menu/shopping-list?start=${s}&end=${e}`),
+    customItems: {
+      list:   ()        => req('/menu/custom-items'),
+      add:    (data)    => req('/menu/custom-items', { method: 'POST', body: JSON.stringify(data) }),
+      remove: (id)      => req(`/menu/custom-items/${id}`, { method: 'DELETE' }),
+    },
   },
   goals: {
     list:    () => req('/goals/'),
     current: () => req('/goals/current'),
     create:  (d) => req('/goals/', { method: 'POST', body: JSON.stringify(d) }),
+  },
+  settings: {
+    autoTagRecipes: () => req('/settings/auto-tag-recipes', { method: 'POST' }),
   },
 };

@@ -3,6 +3,7 @@ import { renderRecipes }   from './recipes.js';
 import { renderPlanner }   from './planner.js';
 import { renderShopping }  from './shopping.js';
 import { renderGoals }     from './goals.js';
+import { renderSettings }  from './settings.js';
 import { api }             from './api.js';
 import { toast, today }    from './utils.js';
 
@@ -12,6 +13,7 @@ const VIEWS = {
   planner:   { el: 'view-planner',   fn: renderPlanner },
   shopping:  { el: 'view-shopping',  fn: renderShopping },
   goals:     { el: 'view-goals',     fn: renderGoals },
+  settings:  { el: 'view-settings',  fn: renderSettings },
 };
 
 let activeView = null;

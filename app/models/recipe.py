@@ -8,8 +8,9 @@ recipe_tags = db.Table(
 
 
 class Tag(db.Model):
-    id   = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(50), unique=True, nullable=False)
+    id     = db.Column(db.Integer, primary_key=True)
+    name   = db.Column(db.String(50), unique=True, nullable=False)
+    hidden = db.Column(db.Boolean, nullable=False, default=False, server_default='0')
 
 
 class Recipe(db.Model):
@@ -35,7 +36,8 @@ class Recipe(db.Model):
                                   backref=db.backref("recipes", lazy=True))
     ingredients = db.relationship("Ingredient", backref="recipe", lazy=True,
                                   cascade="all, delete-orphan")
-    menu_entries = db.relationship("MenuEntry", backref="recipe", lazy=True)
+    menu_entries = db.relationship("MenuEntry", backref="recipe", lazy=True,
+                                  cascade="all, delete-orphan")
 
     def to_dict(self):
         return {

@@ -66,9 +66,16 @@ def import_recipe_from_url(url: str, usda_api_key: str) -> dict:
 
     instructions = None
     try:
-        instructions = scraper.instructions() or None
+        steps = scraper.instructions_list()
+        if steps:
+            instructions = '\n'.join(f"{i + 1}. {step.strip()}" for i, step in enumerate(steps) if step.strip())
     except Exception:
         pass
+    if not instructions:
+        try:
+            instructions = scraper.instructions() or None
+        except Exception:
+            pass
 
     parsed_ingredients = []
     for ing in ingredients:

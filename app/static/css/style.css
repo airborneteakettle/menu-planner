@@ -58,12 +58,11 @@ body {
 }
 
 .meal-badge-pill {
-  font-size: .7rem;
+  font-size: .68rem;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: .04em;
-  padding: .2em .55em;
+  padding: .18em .55em;
   border-radius: 20px;
+  line-height: 1.4;
 }
 
 /* ── Planner grid ───────────────────────────────────────── */
@@ -154,6 +153,35 @@ body {
   color: var(--brand-mid);
 }
 
+/* ── Protein & diet pills ───────────────────────────────────── */
+.tag-pill-protein,
+.tag-pill-diet {
+  display: inline-block;
+  font-size: .68rem;
+  font-weight: 600;
+  padding: .18em .55em;
+  border-radius: 20px;
+  line-height: 1.4;
+}
+
+.tag-pill-protein {
+  background: #fff3e0;
+  color: #bf360c;
+  border: 1px solid #ffcc80;
+}
+
+.tag-pill-vegan {
+  background: #e8f5e9;
+  color: #1b5e20;
+  border: 1px solid #a5d6a7;
+}
+
+.tag-pill-vegetarian {
+  background: #f1f8e9;
+  color: #33691e;
+  border: 1px solid #c5e1a5;
+}
+
 /* ── Stars ──────────────────────────────────────────────── */
 .star-input .star-btn {
   font-size: 1.5rem;
@@ -189,11 +217,12 @@ body {
 
 .shop-item {
   display: flex;
-  align-items: center;
-  gap: .6rem;
+  align-items: baseline;
+  gap: .5rem;
   padding: .35rem .2rem;
   border-bottom: 1px solid #f0f0f0;
   font-size: .88rem;
+  flex-wrap: nowrap;
 }
 
 .shop-item.checked .shop-item-name {
@@ -206,11 +235,58 @@ body {
   width: 1.1em;
   height: 1.1em;
   accent-color: var(--brand-mid);
+  align-self: center;
+}
+
+.shop-item-qty {
+  font-size: .82rem;
+  font-weight: 700;
+  color: var(--brand);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.shop-item-qty:empty { display: none; }
+
+.shop-item-name {
+  flex-shrink: 0;
 }
 
 .shop-item-recipes {
   font-size: .72rem;
-  color: #888;
+  color: #aaa;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.btn-remove-custom {
+  background: none;
+  border: none;
+  padding: 0 2px;
+  color: #ccc;
+  cursor: pointer;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.btn-remove-custom:hover { color: #c62828; }
+
+.btn-add-to-category {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: none;
+  border: 1px dashed #adb5bd;
+  border-radius: 6px;
+  color: #adb5bd;
+  font-size: .78rem;
+  padding: .15rem .5rem;
+  margin-top: .35rem;
+  cursor: pointer;
+  transition: border-color .15s, color .15s;
+}
+.btn-add-to-category:hover {
+  border-color: var(--brand-mid);
+  color: var(--brand-mid);
 }
 
 /* ── Goals ──────────────────────────────────────────────── */

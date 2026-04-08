@@ -138,9 +138,10 @@ def import_recipe():
         return jsonify({"error": "url is required"}), 400
 
     api_key          = current_app.config.get("USDA_API_KEY", "DEMO_KEY")
+    browserless_key  = current_app.config.get("BROWSERLESS_API_KEY")
     scrapingbee_key  = current_app.config.get("SCRAPINGBEE_API_KEY")
     try:
-        scraped = import_recipe_from_url(url, api_key, scrapingbee_key)
+        scraped = import_recipe_from_url(url, api_key, browserless_key, scrapingbee_key)
     except Exception as e:
         return jsonify({"error": f"Failed to scrape recipe: {e}"}), 422
 

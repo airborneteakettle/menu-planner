@@ -14,34 +14,44 @@ _HEADERS = {
 }
 
 
-def _fetch_html(url: str, scrapingbee_key: str | None = None) -> str:
-    """Fetch page HTML directly, falling back to ScrapingBee on 403."""
+def _fetch_html(url: str, browserless_key: str | None = None, scrapingbee_key: str | None = None) -> str:
+    """Fetch page HTML directly, falling back to Browserless then ScrapingBee on 403."""
     resp = requests.get(url, headers=_HEADERS, timeout=15, allow_redirects=True)
     if resp.status_code != 403:
         resp.raise_for_status()
         return resp.text
 
-    if not scrapingbee_key:
-        raise ValueError(
-            "This site is protected by Cloudflare and cannot be imported automatically. "
-            "Try adding the recipe manually instead."
+    # First fallback: Browserless.io (JS rendering)
+    if browserless_key:
+        bl_resp = requests.post(
+            f"https://production-sfo.browserless.io/content?token={browserless_key}",
+            json={"url": url, "waitFor": 2000},
+            headers={"Content-Type": "application/json"},
+            timeout=30,
         )
+        if bl_resp.ok:
+            return bl_resp.text
 
-    # Fallback to ScrapingBee with JS rendering enabled
-    resp = requests.get(
-        "https://app.scrapingbee.com/api/v1/",
-        params={
-            "api_key":        scrapingbee_key,
-            "url":            url,
-            "render_js":      "true",
-            "wait":           "2000",
-            "premium_proxy":  "true",
-        },
-        timeout=60,
+    # Second fallback: ScrapingBee
+    if scrapingbee_key:
+        sb_resp = requests.get(
+            "https://app.scrapingbee.com/api/v1/",
+            params={
+                "api_key":       scrapingbee_key,
+                "url":           url,
+                "render_js":     "true",
+                "wait":          "2000",
+                "premium_proxy": "true",
+            },
+            timeout=60,
+        )
+        if sb_resp.ok:
+            return sb_resp.text
+
+    raise ValueError(
+        "This site is protected by Cloudflare and could not be imported. "
+        "Try adding the recipe manually instead."
     )
-    if not resp.ok:
-        raise ValueError(f"ScrapingBee failed ({resp.status_code}): {resp.text[:200]}")
-    return resp.text
 
 
 def _parse_numeric(value: str | None) -> float | None:
@@ -60,12 +70,12 @@ def _parse_servings(yields_str: str | None) -> int:
     return int(match.group()) if match else 1
 
 
-def import_recipe_from_url(url: str, usda_api_key: str, scrapingbee_key: str | None = None) -> dict:
+def import_recipe_from_url(url: str, usda_api_key: str, browserless_key: str | None = None, scrapingbee_key: str | None = None) -> dict:
     """
     Scrape a recipe URL and return a structured dict ready to insert into the DB.
-    Falls back to ScrapingBee on 403, then USDA for missing nutrition.
+    Falls back to Browserless then ScrapingBee on 403, then USDA for missing nutrition.
     """
-    html = _fetch_html(url, scrapingbee_key)
+    html = _fetch_html(url, browserless_key, scrapingbee_key)
     scraper = scrape_html(html, org_url=url)
 
     name = ""

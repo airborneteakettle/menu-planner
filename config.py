@@ -9,6 +9,7 @@ class Config:
     # Register for a free key at https://fdc.nal.usda.gov/api-guide.html
     # DEMO_KEY works but is rate-limited (30 req/hr, 50/day)
     USDA_API_KEY       = os.environ.get("USDA_API_KEY", "DEMO_KEY")
-    SCRAPINGBEE_API_KEY = os.environ.get("SCRAPINGBEE_API_KEY")
+    BROWSERLESS_API_KEY  = os.environ.get("BROWSERLESS_API_KEY")
+    SCRAPINGBEE_API_KEY  = os.environ.get("SCRAPINGBEE_API_KEY")
     RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
     MAIL_FROM      = os.environ.get("MAIL_FROM", "accounts@menu-planner.charaska.com")

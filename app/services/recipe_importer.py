@@ -1,6 +1,17 @@
 import re
-from recipe_scrapers import scrape_me
+import requests
+from recipe_scrapers import scrape_html
 from app.services.usda import estimate_recipe_nutrition, parse_ingredient
+
+_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/124.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.5",
+}
 
 
 def _parse_numeric(value: str | None) -> float | None:
@@ -24,7 +35,9 @@ def import_recipe_from_url(url: str, usda_api_key: str) -> dict:
     Scrape a recipe URL and return a structured dict ready to insert into the DB.
     Falls back to USDA ingredient lookup if the page doesn't provide nutrition.
     """
-    scraper = scrape_me(url)
+    resp = requests.get(url, headers=_HEADERS, timeout=15, allow_redirects=True)
+    resp.raise_for_status()
+    scraper = scrape_html(resp.text, org_url=url)
 
     ingredients = []
     try:

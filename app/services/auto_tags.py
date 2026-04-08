@@ -22,12 +22,23 @@ _PROTEINS = {
                  'salami', 'pepperoni', 'sausage', 'chorizo'),
     'turkey':   ('turkey',),
     'lamb':     ('lamb',),
+    # Individual fish species — each gets its own tag + the umbrella "fish" tag
     'salmon':   ('salmon',),
     'tuna':     ('tuna',),
+    'cod':      ('cod',),
+    'tilapia':  ('tilapia',),
+    'halibut':  ('halibut',),
+    'bass':     ('bass',),
+    'trout':    ('trout',),
+    'mahi':     ('mahi', 'mahi-mahi'),
+    'catfish':  ('catfish',),
+    'flounder': ('flounder',),
+    'snapper':  ('snapper',),
+    'grouper':  ('grouper',),
+    'sardine':  ('sardine', 'sardines'),
+    'herring':  ('herring',),
+    'anchovy':  ('anchovy', 'anchovies'),
     'shrimp':   ('shrimp', 'prawn'),
-    'fish':     ('cod', 'tilapia', 'halibut', 'bass', 'trout', 'mahi',
-                 'catfish', 'flounder', 'snapper', 'grouper', 'sardine',
-                 'herring', 'anchovy', 'anchovies'),
     'crab':     ('crab',),
     'lobster':  ('lobster',),
     'shellfish': ('scallop', 'clam', 'mussel', 'oyster'),
@@ -36,11 +47,18 @@ _PROTEINS = {
     'beans':    ('bean', 'lentil', 'chickpea', 'edamame', 'legume'),
 }
 
+# Fish species tags — any detection also adds the umbrella "fish" tag
+_FISH_SPECIES = {
+    'salmon', 'tuna', 'cod', 'tilapia', 'halibut', 'bass', 'trout',
+    'mahi', 'catfish', 'flounder', 'snapper', 'grouper', 'sardine',
+    'herring', 'anchovy',
+}
+
 # Protein tags that disqualify vegetarian (major meat/fish only)
 _MEAT_FISH = {
     'chicken', 'beef', 'pork', 'turkey', 'lamb',
-    'salmon', 'tuna', 'shrimp', 'fish', 'crab', 'lobster', 'shellfish',
-}
+    'fish', 'shrimp', 'crab', 'lobster', 'shellfish',
+} | _FISH_SPECIES
 
 # Additional keywords that disqualify vegetarian but aren't covered by _PROTEINS
 _EXTRA_MEAT_FISH = (
@@ -90,6 +108,11 @@ def apply_auto_tags(recipe):
         if _has(texts, *keywords):
             _ensure(protein)
             detected.add(protein)
+
+    # Any specific fish species also gets the umbrella "fish" tag
+    if detected & _FISH_SPECIES:
+        _ensure('fish')
+        detected.add('fish')
 
     # ── Vegetarian / vegan ────────────────────────────────────────────────────
     # Vegetarian: no major meat/fish protein

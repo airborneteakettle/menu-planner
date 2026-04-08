@@ -36,7 +36,7 @@ def _fetch_html(url: str, browserless_key: str | None = None, scrapingbee_key: s
         log.info("IMPORT trying Browserless.io for %s", url)
         bl_resp = requests.post(
             f"https://production-sfo.browserless.io/content?token={browserless_key}",
-            json={"url": url},
+            json={"url": url, "gotoOptions": {"waitUntil": "networkidle2"}},
             headers={"Content-Type": "application/json"},
             timeout=30,
         )

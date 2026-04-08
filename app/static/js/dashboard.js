@@ -88,10 +88,11 @@ function weeklyCard(w) {
   }).join('');
 
   const macros = [
-    ['Calories', '--cal-color',  totals.calories,  wt.calories,  'kcal'],
-    ['Protein',  '--prot-color', totals.protein_g, wt.protein_g, 'g'],
-    ['Carbs',    '--carb-color', totals.carbs_g,   wt.carbs_g,   'g'],
-    ['Fat',      '--fat-color',  totals.fat_g,     wt.fat_g,     'g'],
+    ['Calories', '--cal-color',   totals.calories,  wt.calories,  'kcal'],
+    ['Protein',  '--prot-color',  totals.protein_g, wt.protein_g, 'g'],
+    ['Carbs',    '--carb-color',  totals.carbs_g,   wt.carbs_g,   'g'],
+    ['Fat',      '--fat-color',   totals.fat_g,     wt.fat_g,     'g'],
+    ['Fiber',    '--fiber-color', totals.fiber_g,   wt.fiber_g,   'g'],
   ];
 
   const macroRows = macros.map(([name, color, actual, target]) => {
@@ -348,13 +349,11 @@ function renderBody(el, summary, weekly, weightEntries, goalData) {
               : ''}
           </div>
           <div class="card-body">
-            ${macroRow('Calories', '--cal-color',  totals.calories,  hasGoal ? g.calories?.target  : null)}
-            ${macroRow('Protein', '--prot-color',  totals.protein_g, hasGoal ? g.protein_g?.target : null)}
-            ${macroRow('Carbs',   '--carb-color',  totals.carbs_g,   hasGoal ? g.carbs_g?.target   : null)}
-            ${macroRow('Fat',     '--fat-color',   totals.fat_g,     hasGoal ? g.fat_g?.target     : null)}
-            ${goal?.fiber_g_target
-              ? macroRow('Fiber', '--fiber-color', totals.fiber_g || 0, goal.fiber_g_target)
-              : ''}
+            ${macroRow('Calories', '--cal-color',   totals.calories,  hasGoal ? g.calories?.target  : null)}
+            ${macroRow('Protein',  '--prot-color',  totals.protein_g, hasGoal ? g.protein_g?.target : null)}
+            ${macroRow('Carbs',    '--carb-color',  totals.carbs_g,   hasGoal ? g.carbs_g?.target   : null)}
+            ${macroRow('Fat',      '--fat-color',   totals.fat_g,     hasGoal ? g.fat_g?.target     : null)}
+            ${macroRow('Fiber',    '--fiber-color', totals.fiber_g || 0, goal?.fiber_g_target || null)}
           </div>
         </div>
       </div>

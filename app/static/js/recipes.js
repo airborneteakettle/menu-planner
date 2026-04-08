@@ -522,6 +522,7 @@ function openManualAddModal() {
   document.getElementById('ar-protein').value      = '';
   document.getElementById('ar-carbs').value        = '';
   document.getElementById('ar-fat').value          = '';
+  document.getElementById('ar-fiber').value        = '';
   document.getElementById('ar-per-serving-preview').classList.add('d-none');
   document.getElementById('ar-error').classList.add('d-none');
   document.getElementById('ar-nutrition-panel').classList.add('d-none');
@@ -740,6 +741,7 @@ async function saveManualRecipe() {
   const manualProt  = parseFloat(document.getElementById('ar-protein').value)  || null;
   const manualCarbs = parseFloat(document.getElementById('ar-carbs').value)    || null;
   const manualFat   = parseFloat(document.getElementById('ar-fat').value)      || null;
+  const manualFiber = parseFloat(document.getElementById('ar-fiber').value)    || null;
   const hasManual   = manualCals || manualProt || manualCarbs || manualFat;
 
   // Both manual totals and USDA totals are divided by servings before storing
@@ -749,6 +751,7 @@ async function saveManualRecipe() {
   const finalProt  = perServing(manualProt  ?? nutrition.protein_g);
   const finalCarbs = perServing(manualCarbs ?? nutrition.carbs_g);
   const finalFat   = perServing(manualFat   ?? nutrition.fat_g);
+  const finalFiber = perServing(manualFiber ?? nutrition.fiber_g);
   const nutritionSource = hasManual ? 'manual' : (_pendingNutrition ? 'usda_estimate' : null);
 
   try {
@@ -759,6 +762,7 @@ async function saveManualRecipe() {
       protein_g:    finalProt,
       carbs_g:      finalCarbs,
       fat_g:        finalFat,
+      fiber_g:      finalFiber,
       nutrition_source: nutritionSource,
       ingredients,
       instructions,

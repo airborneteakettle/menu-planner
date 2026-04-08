@@ -32,6 +32,7 @@ class Recipe(db.Model):
     carbs_g   = db.Column(db.Float)
     fat_g     = db.Column(db.Float)
 
+    fiber_g          = db.Column(db.Float)
     meal_type        = db.Column(db.String(50))
     source_url       = db.Column(db.String(2048))
     nutrition_source = db.Column(db.String(20))
@@ -61,6 +62,7 @@ class Recipe(db.Model):
             "protein_g":        self.protein_g,
             "carbs_g":          self.carbs_g,
             "fat_g":            self.fat_g,
+            "fiber_g":          self.fiber_g,
             "meal_type":        self.meal_type,
             "source_url":       self.source_url,
             "nutrition_source": self.nutrition_source,

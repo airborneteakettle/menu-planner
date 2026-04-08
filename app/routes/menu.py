@@ -65,7 +65,7 @@ def daily_summary():
     day     = date.fromisoformat(day_str)
     entries = _visible_entries(MenuEntry.query).filter(MenuEntry.date == day).all()
 
-    totals = {"calories": 0.0, "protein_g": 0.0, "carbs_g": 0.0, "fat_g": 0.0}
+    totals = {"calories": 0.0, "protein_g": 0.0, "carbs_g": 0.0, "fat_g": 0.0, "fiber_g": 0.0}
     for entry in entries:
         recipe = entry.recipe
         if not recipe:
@@ -110,7 +110,7 @@ def weekly_summary():
         MenuEntry.date >= start, MenuEntry.date <= end
     ).order_by(MenuEntry.date).all()
 
-    MACROS  = ("calories", "protein_g", "carbs_g", "fat_g")
+    MACROS  = ("calories", "protein_g", "carbs_g", "fat_g", "fiber_g")
     day_map = {start + timedelta(days=i): {k: 0.0 for k in MACROS} for i in range(7)}
 
     for entry in entries:
@@ -138,6 +138,7 @@ def weekly_summary():
             "protein_g": (goal.protein_g_target or 0) * 7,
             "carbs_g":   (goal.carbs_g_target   or 0) * 7,
             "fat_g":     (goal.fat_g_target     or 0) * 7,
+            "fiber_g":   (goal.fiber_g_target   or 0) * 7,
         }
 
     return jsonify({

@@ -1,5 +1,5 @@
 from app import db
-from datetime import date
+from datetime import datetime
 
 class DietGoal(db.Model):
     id      = db.Column(db.Integer, primary_key=True)
@@ -10,7 +10,7 @@ class DietGoal(db.Model):
     fat_g_target = db.Column(db.Float)
     fiber_g_target = db.Column(db.Float)  # optional
     goal_weight    = db.Column(db.Float)  # optional, unitless (user's chosen unit)
-    created_at = db.Column(db.Date, default=date.today)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
     notes = db.Column(db.Text)
 
     def to_dict(self):
@@ -22,6 +22,6 @@ class DietGoal(db.Model):
             "fat_g_target": self.fat_g_target,
             "fiber_g_target": self.fiber_g_target,
             "goal_weight": self.goal_weight,
-            "created_at": self.created_at.isoformat(),
+            "created_at": self.created_at.strftime("%Y-%m-%d"),
             "notes": self.notes,
         }

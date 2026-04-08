@@ -109,18 +109,41 @@ body {
 
 .entry-chip {
   display: inline-flex;
-  align-items: center;
-  gap: 4px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
   background: var(--brand-lite);
   color: var(--brand);
   border-radius: 6px;
-  padding: .2rem .45rem;
+  padding: .25rem .45rem;
   font-size: .78rem;
   font-weight: 500;
   margin: 2px;
   cursor: pointer;
   max-width: 100%;
   overflow: hidden;
+}
+
+.entry-chip > :first-child {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+}
+
+.chip-nutrition {
+  display: flex;
+  gap: 6px;
+  font-size: .66rem;
+  font-weight: 400;
+  color: var(--brand);
+  opacity: .75;
+  flex-wrap: wrap;
+}
+
+.chip-nut-unit {
+  font-weight: 600;
+  margin-left: 1px;
 }
 
 .entry-chip:hover { background: #c8e6c9; }

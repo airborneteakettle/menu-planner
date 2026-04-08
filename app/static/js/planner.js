@@ -198,16 +198,29 @@ function entryChipHtml(e) {
        </button>`
     : '';
 
+  const n = e.nutrition;
+  const nutritionHtml = n ? `
+    <span class="chip-nutrition">
+      ${n.calories != null  ? `<span>${Math.round(n.calories)}<span class="chip-nut-unit">cal</span></span>` : ''}
+      ${n.protein_g != null ? `<span>${n.protein_g}<span class="chip-nut-unit">P</span></span>` : ''}
+      ${n.fat_g != null     ? `<span>${n.fat_g}<span class="chip-nut-unit">F</span></span>` : ''}
+      ${n.carbs_g != null   ? `<span>${n.carbs_g}<span class="chip-nut-unit">C</span></span>` : ''}
+      ${n.fiber_g != null   ? `<span>${n.fiber_g}<span class="chip-nut-unit">Fi</span></span>` : ''}
+    </span>` : '';
+
   return `
     <span class="${chipClass}"
           data-recipe-id="${e.recipe_id}"
           data-entry-id="${e.id}"
           data-is-mine="${e.is_mine}">
-      ${ownerBadge}
-      <span class="chip-name">${e.recipe_name}</span>
-      ${shareIndicator}
-      ${shareBtn}
-      <button class="btn-remove" data-entry-id="${e.id}" title="Remove">×</button>
+      <span style="display:flex;align-items:center;gap:4px;width:100%">
+        ${ownerBadge}
+        <span class="chip-name">${e.recipe_name}</span>
+        ${shareIndicator}
+        ${shareBtn}
+        <button class="btn-remove" data-entry-id="${e.id}" title="Remove">×</button>
+      </span>
+      ${nutritionHtml}
     </span>`;
 }
 

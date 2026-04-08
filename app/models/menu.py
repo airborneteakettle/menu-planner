@@ -42,4 +42,20 @@ class MenuEntry(db.Model):
             "owner":        owner.username if owner else None,
             "is_mine":      self.user_id == viewer_id,
             "shared_with":  [u.username for u in shared_users if u],
+            "nutrition":    self._nutrition(),
+        }
+
+    def _nutrition(self):
+        r = self.recipe
+        if not r:
+            return None
+        s = self.servings or 1
+        def v(val):
+            return round(val * s, 1) if val is not None else None
+        return {
+            "calories":  v(r.calories),
+            "protein_g": v(r.protein_g),
+            "carbs_g":   v(r.carbs_g),
+            "fat_g":     v(r.fat_g),
+            "fiber_g":   v(r.fiber_g),
         }

@@ -14,11 +14,14 @@ async function req(path, options = {}) {
 
 export const api = {
   recipes: {
-    list:   (p = {})  => req('/recipes/?' + new URLSearchParams(p)),
-    get:    (id)      => req(`/recipes/${id}`),
-    import: (url)     => req('/recipes/import', { method: 'POST', body: JSON.stringify({ url }) }),
-    create: (data)    => req('/recipes/', { method: 'POST', body: JSON.stringify(data) }),
-    delete: (id)      => req(`/recipes/${id}`, { method: 'DELETE' }),
+    list:      (p = {})       => req('/recipes/?' + new URLSearchParams(p)),
+    get:       (id)           => req(`/recipes/${id}`),
+    import:    (url)          => req('/recipes/import', { method: 'POST', body: JSON.stringify({ url }) }),
+    create:    (data)         => req('/recipes/', { method: 'POST', body: JSON.stringify(data) }),
+    update:    (id, data)     => req(`/recipes/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    setRating: (id, rating)   => req(`/recipes/${id}/rating`, { method: 'PATCH', body: JSON.stringify({ rating }) }),
+    delete:    (id)           => req(`/recipes/${id}`, { method: 'DELETE' }),
+    tags:      ()             => req('/recipes/tags/'),
   },
   menu: {
     week:     ()        => req('/menu/week'),

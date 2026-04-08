@@ -154,6 +154,27 @@ body {
   color: var(--brand-mid);
 }
 
+/* ── Stars ──────────────────────────────────────────────── */
+.star-input .star-btn {
+  font-size: 1.5rem;
+  cursor: pointer;
+  line-height: 1;
+  transition: transform .1s;
+  user-select: none;
+}
+.star-input .star-btn:hover { transform: scale(1.2); }
+
+.stars-display { letter-spacing: -.05em; }
+
+.tag-filter-pill {
+  font-size: .75rem;
+  padding: .25em .6em;
+  color: #555;
+  background: #f8f9fa;
+  transition: background .15s, color .15s;
+}
+.tag-filter-pill:hover { background: #e8f5e9; color: var(--brand); }
+
 /* ── Shopping list ──────────────────────────────────────── */
 .shop-category-header {
   font-size: .75rem;

@@ -64,16 +64,6 @@ def import_recipe_from_url(url: str, usda_api_key: str) -> dict:
     except Exception:
         pass
 
-    meal_type = None
-    try:
-        category = (scraper.category() or "").lower()
-        for t in ("breakfast", "lunch", "dinner", "snack"):
-            if t in category:
-                meal_type = t
-                break
-    except Exception:
-        pass
-
     instructions = None
     try:
         instructions = scraper.instructions() or None
@@ -92,7 +82,6 @@ def import_recipe_from_url(url: str, usda_api_key: str) -> dict:
         "protein_g": protein_g,
         "fat_g": fat_g,
         "carbs_g": carbs_g,
-        "meal_type": meal_type,
         "instructions": instructions,
         "ingredients": parsed_ingredients,
         "source_url": url,

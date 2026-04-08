@@ -36,6 +36,8 @@ def import_recipe_from_url(url: str, usda_api_key: str) -> dict:
     Falls back to USDA ingredient lookup if the page doesn't provide nutrition.
     """
     resp = requests.get(url, headers=_HEADERS, timeout=15, allow_redirects=True)
+    if resp.status_code == 403:
+        raise ValueError(f"403 Forbidden — {url} is blocking server-side requests (Cloudflare or similar)")
     resp.raise_for_status()
     scraper = scrape_html(resp.text, org_url=url)
 

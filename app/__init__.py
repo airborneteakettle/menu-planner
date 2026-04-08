@@ -31,17 +31,19 @@ def create_app(config_class=Config):
     app.register_blueprint(auth_bp)
 
     # ── API blueprints ────────────────────────────────────────────────────────
-    from app.routes.recipes  import bp as recipes_bp
-    from app.routes.menu     import bp as menu_bp
-    from app.routes.goals    import bp as goals_bp
-    from app.routes.settings import bp as settings_bp
-    from app.routes.users    import bp as users_bp
+    from app.routes.recipes   import bp as recipes_bp
+    from app.routes.menu      import bp as menu_bp
+    from app.routes.goals     import bp as goals_bp
+    from app.routes.settings  import bp as settings_bp
+    from app.routes.users     import bp as users_bp
+    from app.routes.household import bp as household_bp
 
-    app.register_blueprint(recipes_bp,  url_prefix="/api/recipes")
-    app.register_blueprint(menu_bp,     url_prefix="/api/menu")
-    app.register_blueprint(goals_bp,    url_prefix="/api/goals")
-    app.register_blueprint(settings_bp, url_prefix="/api/settings")
-    app.register_blueprint(users_bp,    url_prefix="/api/users")
+    app.register_blueprint(recipes_bp,   url_prefix="/api/recipes")
+    app.register_blueprint(menu_bp,      url_prefix="/api/menu")
+    app.register_blueprint(goals_bp,     url_prefix="/api/goals")
+    app.register_blueprint(settings_bp,  url_prefix="/api/settings")
+    app.register_blueprint(users_bp,     url_prefix="/api/users")
+    app.register_blueprint(household_bp, url_prefix="/api/household")
 
     # ── Main SPA route ────────────────────────────────────────────────────────
     @app.route("/")
@@ -89,8 +91,9 @@ def create_app(config_class=Config):
             click.echo(f'User "{username}" ({email}) created.')
 
     with app.app_context():
-        from app.models import shopping  # noqa: F401
-        from app.models import user      # noqa: F401
+        from app.models import shopping   # noqa: F401
+        from app.models import user       # noqa: F401
+        from app.models import household  # noqa: F401
         db.create_all()
 
     return app

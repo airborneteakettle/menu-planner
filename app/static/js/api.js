@@ -55,4 +55,10 @@ export const api = {
   settings: {
     autoTagRecipes: () => req('/settings/auto-tag-recipes', { method: 'POST' }),
   },
+  household: {
+    get:    ()           => req('/household/'),
+    create: (name)       => req('/household/', { method: 'POST', body: JSON.stringify({ name }) }),
+    invite: (identifier) => req('/household/invite', { method: 'POST', body: JSON.stringify({ identifier }) }),
+    remove: (userId)     => req(`/household/members/${userId}`, { method: 'DELETE' }),
+  },
 };

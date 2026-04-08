@@ -6,10 +6,20 @@ from app.models.menu import MenuEntry, MenuEntryShare
 from app.models.recipe import Recipe, Tag
 from app.models.goals import DietGoal
 from app.models.shopping import CustomShoppingItem
+from app.models.household import HouseholdMember
 from app.services.shopping import generate_shopping_list
 from datetime import date, timedelta
 
 bp = Blueprint("menu", __name__)
+
+
+def _household_user_ids():
+    """All user_ids in the same household as current_user (including self)."""
+    member = HouseholdMember.query.filter_by(user_id=current_user.id).first()
+    if not member:
+        return [current_user.id]
+    return [m.user_id for m in
+            HouseholdMember.query.filter_by(household_id=member.household_id).all()]
 
 
 def _visible_entries(query):
@@ -147,8 +157,12 @@ def shopping_list():
     start = date.fromisoformat(request.args.get("start", default_start.isoformat()))
     end   = date.fromisoformat(request.args.get("end",   default_end.isoformat()))
 
-    entries = _visible_entries(MenuEntry.query).filter(
-        MenuEntry.date >= start, MenuEntry.date <= end
+    # Include every entry from every household member (not just shared ones)
+    member_ids = _household_user_ids()
+    entries = MenuEntry.query.filter(
+        MenuEntry.user_id.in_(member_ids),
+        MenuEntry.date >= start,
+        MenuEntry.date <= end,
     ).all()
 
     grouped     = generate_shopping_list(entries)

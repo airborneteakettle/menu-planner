@@ -177,7 +177,6 @@ def create_recipe():
         carbs_g          = data.get("carbs_g"),
         fat_g            = data.get("fat_g"),
         meal_type        = data.get("meal_type"),
-        rating           = data.get("rating"),
         nutrition_source = data.get("nutrition_source"),
     )
     for ing in data.get("ingredients", []):
@@ -196,7 +195,7 @@ def update_recipe(recipe_id):
     recipe = Recipe.query.get_or_404(recipe_id)
     data   = request.get_json()
     for field in ("name", "description", "servings", "calories",
-                  "protein_g", "carbs_g", "fat_g", "meal_type", "rating"):
+                  "protein_g", "carbs_g", "fat_g", "meal_type"):
         if field in data:
             setattr(recipe, field, data[field])
     if "tags" in data:

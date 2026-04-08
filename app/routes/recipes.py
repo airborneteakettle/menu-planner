@@ -1,3 +1,4 @@
+import logging
 from flask import Blueprint, jsonify, request, current_app
 from flask_login import current_user
 from app import db
@@ -8,6 +9,7 @@ from app.services.auto_tags import apply_auto_tags
 from app.services.usda import estimate_recipe_nutrition, lookup_ingredient_nutrition, parse_ingredient
 
 bp = Blueprint("recipes", __name__)
+log = logging.getLogger(__name__)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -140,9 +142,11 @@ def import_recipe():
     api_key          = current_app.config.get("USDA_API_KEY", "DEMO_KEY")
     browserless_key  = current_app.config.get("BROWSERLESS_API_KEY")
     scrapingbee_key  = current_app.config.get("SCRAPINGBEE_API_KEY")
+    log.info("RECIPE_IMPORT_START: user=%s url=%s", current_user.username, url)
     try:
         scraped = import_recipe_from_url(url, api_key, browserless_key, scrapingbee_key)
     except Exception as e:
+        log.error("RECIPE_IMPORT_FAILED: user=%s url=%s error=%s", current_user.username, url, e)
         return jsonify({"error": f"Failed to scrape recipe: {e}"}), 422
 
     source_url = scraped.get("source_url")
@@ -167,6 +171,7 @@ def import_recipe():
             existing.ingredients.append(Ingredient(name=ing["name"], quantity=ing.get("quantity")))
         apply_auto_tags(existing)
         db.session.commit()
+        log.info("RECIPE_REIMPORT: user=%s recipe_id=%d name=%r", current_user.username, existing.id, existing.name)
         result = _attach_goal_comparison(existing.to_dict())
         result["_updated"] = True
         return jsonify(result), 200
@@ -191,6 +196,7 @@ def import_recipe():
     db.session.flush()          # assign recipe.id so tags can reference it
     apply_auto_tags(recipe)
     db.session.commit()
+    log.info("RECIPE_IMPORT: user=%s recipe_id=%d name=%r", current_user.username, recipe.id, recipe.name)
     return jsonify(_attach_goal_comparison(recipe.to_dict())), 201
 
 
@@ -217,6 +223,7 @@ def create_recipe():
     db.session.flush()
     apply_auto_tags(recipe)
     db.session.commit()
+    log.info("RECIPE_CREATE: user=%s recipe_id=%d name=%r", current_user.username, recipe.id, recipe.name)
     return jsonify(recipe.to_dict()), 201
 
 
@@ -238,6 +245,7 @@ def update_recipe(recipe_id):
         for ing in data["ingredients"]:
             recipe.ingredients.append(Ingredient(name=ing["name"], quantity=ing.get("quantity")))
     db.session.commit()
+    log.info("RECIPE_UPDATE: user=%s recipe_id=%d name=%r", current_user.username, recipe.id, recipe.name)
     return jsonify(recipe.to_dict())
 
 
@@ -269,6 +277,7 @@ def set_rating(recipe_id):
 @bp.route("/<int:recipe_id>", methods=["DELETE"])
 def delete_recipe(recipe_id):
     recipe = Recipe.query.get_or_404(recipe_id)
+    log.info("RECIPE_DELETE: user=%s recipe_id=%d name=%r", current_user.username, recipe_id, recipe.name)
     db.session.delete(recipe)
     db.session.commit()
     return "", 204

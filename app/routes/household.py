@@ -1,3 +1,4 @@
+import logging
 from flask import Blueprint, jsonify, request
 from flask_login import current_user
 from sqlalchemy import or_
@@ -6,6 +7,7 @@ from app.models.household import Household, HouseholdMember
 from app.models.user import User
 
 bp = Blueprint('household', __name__)
+log = logging.getLogger(__name__)
 
 
 def _current_household():
@@ -31,6 +33,7 @@ def create_household():
     db.session.flush()
     db.session.add(HouseholdMember(household_id=h.id, user_id=current_user.id))
     db.session.commit()
+    log.info("HOUSEHOLD_CREATE: user=%s household_id=%d name=%r", current_user.username, h.id, h.name)
     return jsonify(h.to_dict()), 201
 
 
@@ -61,6 +64,7 @@ def invite_member():
 
     db.session.add(HouseholdMember(household_id=h.id, user_id=user.id))
     db.session.commit()
+    log.info("HOUSEHOLD_INVITE: by=%s added=%s household_id=%d", current_user.username, user.username, h.id)
     return jsonify({'id': user.id, 'username': user.username}), 201
 
 
@@ -83,5 +87,8 @@ def remove_member(user_id):
         remaining = HouseholdMember.query.filter_by(household_id=h.id).count()
         if remaining == 0:
             db.session.delete(h)
+            log.info("HOUSEHOLD_DELETE: household_id=%d (empty after member removal)", h.id)
         db.session.commit()
+        log.info("HOUSEHOLD_REMOVE_MEMBER: by=%s removed_user_id=%d household_id=%d",
+                 current_user.username, user_id, h.id)
     return '', 204

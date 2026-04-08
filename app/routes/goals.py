@@ -1,9 +1,11 @@
+import logging
 from flask import Blueprint, jsonify, request
 from flask_login import current_user
 from app import db
 from app.models.goals import DietGoal
 
 bp = Blueprint("goals", __name__)
+log = logging.getLogger(__name__)
 
 
 @bp.route("/", methods=["GET"])
@@ -37,4 +39,7 @@ def create_goal():
     )
     db.session.add(goal)
     db.session.commit()
+    log.info("GOAL_CREATE: user=%s cal=%s prot=%s carbs=%s fat=%s fiber=%s",
+             current_user.username, goal.calories_target, goal.protein_g_target,
+             goal.carbs_g_target, goal.fat_g_target, goal.fiber_g_target)
     return jsonify(goal.to_dict()), 201

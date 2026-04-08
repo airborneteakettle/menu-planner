@@ -1,3 +1,4 @@
+import logging
 from flask import Blueprint, jsonify, request
 from flask_login import current_user
 from app import db
@@ -5,6 +6,7 @@ from app.models.recipe import Recipe
 from app.services.auto_tags import apply_auto_tags
 
 bp = Blueprint("settings", __name__)
+log = logging.getLogger(__name__)
 
 
 @bp.route("/account", methods=["GET"])
@@ -29,6 +31,7 @@ def update_account():
 
     current_user.email = email
     db.session.commit()
+    log.info("EMAIL_UPDATE: user=%s new_email=%s", current_user.username, email)
     return jsonify({"ok": True})
 
 
@@ -43,10 +46,12 @@ def change_password():
     if len(new_pw) < 8:
         return jsonify({"error": "New password must be at least 8 characters"}), 400
     if not current_user.check_password(current_pw):
+        log.warning("PASSWORD_CHANGE_FAILED: user=%s (wrong current password)", current_user.username)
         return jsonify({"error": "Current password is incorrect"}), 400
 
     current_user.set_password(new_pw)
     db.session.commit()
+    log.info("PASSWORD_CHANGE: user=%s", current_user.username)
     return jsonify({"ok": True})
 
 
@@ -73,6 +78,7 @@ def auto_tag_recipes():
     db.session.commit()
 
     total_added = sum(len(r["added"]) for r in results)
+    log.info("AUTO_TAG: user=%s recipes=%d tags_added=%d", current_user.username, len(recipes), total_added)
     return jsonify({
         "recipes_processed": len(recipes),
         "tags_added":        total_added,

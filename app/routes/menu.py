@@ -1,3 +1,4 @@
+import logging
 from flask import Blueprint, jsonify, request
 from flask_login import current_user
 from sqlalchemy import or_
@@ -11,6 +12,7 @@ from app.services.shopping import generate_shopping_list
 from datetime import date, timedelta
 
 bp = Blueprint("menu", __name__)
+log = logging.getLogger(__name__)
 
 
 def _household_user_ids():
@@ -205,6 +207,8 @@ def add_entry():
             recipe.tags.append(tag)
 
     db.session.commit()
+    log.info("MENU_ADD: user=%s entry_id=%d recipe_id=%d date=%s meal=%s",
+             current_user.username, entry.id, entry.recipe_id, entry.date, entry.meal_type)
     return jsonify(entry.to_dict(viewer_id=current_user.id)), 201
 
 
@@ -222,6 +226,7 @@ def remove_entry(entry_id):
         if share:
             db.session.delete(share)
     db.session.commit()
+    log.info("MENU_REMOVE: user=%s entry_id=%d", current_user.username, entry_id)
     return "", 204
 
 

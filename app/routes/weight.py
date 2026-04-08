@@ -1,3 +1,4 @@
+import logging
 from flask import Blueprint, jsonify, request
 from flask_login import current_user
 from app import db
@@ -5,6 +6,7 @@ from app.models.weight import WeightEntry
 from datetime import date as date_type
 
 bp = Blueprint('weight', __name__)
+log = logging.getLogger(__name__)
 
 
 @bp.route('/', methods=['GET'])
@@ -35,6 +37,7 @@ def log_entry():
         entry = WeightEntry(user_id=current_user.id, date=d, weight=w)
         db.session.add(entry)
     db.session.commit()
+    log.info("WEIGHT_LOG: user=%s date=%s weight=%s", current_user.username, d, w)
     return jsonify(entry.to_dict()), 201
 
 
@@ -43,6 +46,7 @@ def delete_entry(entry_id):
     entry = WeightEntry.query.filter_by(
         id=entry_id, user_id=current_user.id
     ).first_or_404()
+    log.info("WEIGHT_DELETE: user=%s entry_id=%d date=%s", current_user.username, entry_id, entry.date)
     db.session.delete(entry)
     db.session.commit()
     return '', 204

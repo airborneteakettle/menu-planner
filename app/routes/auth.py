@@ -1,11 +1,13 @@
+import logging
 from flask import (Blueprint, request, redirect, url_for,
                    render_template, flash, current_app)
-from flask_login import login_user, logout_user, login_required
+from flask_login import login_user, logout_user, login_required, current_user
 from app import db
 from app.models.user import User
 from app.services.mail import send_password_reset
 
 bp = Blueprint('auth', __name__)
+log = logging.getLogger(__name__)
 
 
 @bp.route('/login', methods=['GET', 'POST'])
@@ -20,7 +22,9 @@ def login():
         )
         if user and user.check_password(password):
             login_user(user, remember=True)
+            log.info("LOGIN success: user=%s ip=%s", user.username, request.remote_addr)
             return redirect(request.args.get('next') or url_for('index'))
+        log.warning("LOGIN failed: identifier=%r ip=%s", identifier, request.remote_addr)
         return render_template('login.html', error='Invalid username or password.')
     return render_template('login.html')
 
@@ -28,6 +32,7 @@ def login():
 @bp.route('/logout')
 @login_required
 def logout():
+    log.info("LOGOUT: user=%s ip=%s", current_user.username, request.remote_addr)
     logout_user()
     return redirect(url_for('auth.login'))
 
@@ -42,10 +47,11 @@ def forgot_password():
             token     = user.generate_reset_token()
             db.session.commit()
             reset_url = url_for('auth.reset_password', token=token, _external=True)
+            log.info("PASSWORD_RESET_REQUEST: user=%s ip=%s", user.username, request.remote_addr)
             try:
                 send_password_reset(user.email, user.username, reset_url)
             except Exception as e:
-                current_app.logger.error(f'Reset email failed: {e}')
+                log.error("PASSWORD_RESET_EMAIL_FAILED: user=%s error=%s", user.username, e)
         return render_template('forgot_password.html', sent=True)
     return render_template('forgot_password.html', sent=False)
 
@@ -68,6 +74,7 @@ def reset_password(token):
         user.set_password(password)
         user.clear_reset_token()
         db.session.commit()
+        log.info("PASSWORD_RESET_COMPLETE: user=%s ip=%s", user.username, request.remote_addr)
         return render_template('reset_password.html', success=True)
 
     return render_template('reset_password.html', token=token)

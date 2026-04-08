@@ -1,6 +1,7 @@
 from flask import Blueprint, jsonify, request, current_app
+from flask_login import current_user
 from app import db
-from app.models.recipe import Recipe, Ingredient, Tag
+from app.models.recipe import Recipe, Ingredient, Tag, RecipeRating
 from app.models.goals import DietGoal
 from app.services.recipe_importer import import_recipe_from_url
 from app.services.auto_tags import apply_auto_tags
@@ -10,6 +11,13 @@ bp = Blueprint("recipes", __name__)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _my_rating(recipe_id: int) -> int | None:
+    row = RecipeRating.query.filter_by(
+        user_id=current_user.id, recipe_id=recipe_id
+    ).first()
+    return row.rating if row else None
+
 
 def _attach_goal_comparison(recipe_dict: dict) -> dict:
     goal = DietGoal.query.order_by(DietGoal.created_at.desc()).first()
@@ -107,13 +115,19 @@ def list_recipes():
     if min_rating := request.args.get("min_rating", type=int):
         query = query.filter(Recipe.rating >= min_rating)
 
-    return jsonify([r.to_dict() for r in query.order_by(Recipe.name).all()])
+    recipes = query.order_by(Recipe.name).all()
+    # Build a map of this user's ratings in one query
+    my_ratings = {
+        rr.recipe_id: rr.rating
+        for rr in RecipeRating.query.filter_by(user_id=current_user.id).all()
+    }
+    return jsonify([r.to_dict(my_rating=my_ratings.get(r.id)) for r in recipes])
 
 
 @bp.route("/<int:recipe_id>", methods=["GET"])
 def get_recipe(recipe_id):
     recipe = Recipe.query.get_or_404(recipe_id)
-    return jsonify(_attach_goal_comparison(recipe.to_dict()))
+    return jsonify(_attach_goal_comparison(recipe.to_dict(my_rating=_my_rating(recipe_id))))
 
 
 @bp.route("/import", methods=["POST"])
@@ -198,9 +212,22 @@ def set_rating(recipe_id):
     rating = data.get("rating")
     if rating is not None and rating not in (1, 2, 3, 4, 5):
         return jsonify({"error": "Rating must be 1–5 or null"}), 400
-    recipe.rating = rating
+
+    row = RecipeRating.query.filter_by(
+        user_id=current_user.id, recipe_id=recipe_id
+    ).first()
+    if rating is None:
+        if row:
+            db.session.delete(row)
+    else:
+        if row:
+            row.rating = rating
+        else:
+            db.session.add(RecipeRating(
+                user_id=current_user.id, recipe_id=recipe_id, rating=rating
+            ))
     db.session.commit()
-    return jsonify(recipe.to_dict())
+    return jsonify(recipe.to_dict(my_rating=rating))
 
 
 @bp.route("/<int:recipe_id>", methods=["DELETE"])

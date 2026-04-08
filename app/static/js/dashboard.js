@@ -20,8 +20,11 @@ export async function renderDashboard(el) {
     </div>`;
 
   try {
-    const summary = await api.menu.summary(dateStr);
-    renderBody(el.querySelector('#dash-body'), summary);
+    const [summary, weekly] = await Promise.all([
+      api.menu.summary(dateStr),
+      api.menu.weeklySummary(),
+    ]);
+    renderBody(el.querySelector('#dash-body'), summary, weekly);
   } catch (e) {
     el.querySelector('#dash-body').innerHTML =
       `<div class="alert alert-warning"><i class="bi bi-exclamation-triangle me-1"></i>${e.message}</div>`;
@@ -48,7 +51,95 @@ function macroRow(label, colorVar, actual, target) {
     </div>`;
 }
 
-function renderBody(el, summary) {
+function weeklyCard(w) {
+  const { days, totals, weekly_targets: wt, has_goal, week_start, week_end } = w;
+
+  const fmtDate = iso =>
+    new Date(iso + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const label = `${fmtDate(week_start)} – ${fmtDate(week_end)}`;
+
+  // Day-by-day calorie strip
+  const dailyCal  = has_goal && wt.calories ? wt.calories / 7 : 0;
+  const maxCal    = Math.max(...days.map(d => d.calories), dailyCal, 1);
+  const todayIso  = today();
+
+  const dayStrip = days.map(d => {
+    const isToday = d.date === todayIso;
+    const pct     = Math.min(Math.round(d.calories / maxCal * 100), 100);
+    const goalPct = dailyCal ? Math.min(Math.round(dailyCal / maxCal * 100), 100) : 0;
+    const over    = dailyCal && d.calories > dailyCal;
+    return `
+      <div class="d-flex flex-column align-items-center flex-fill">
+        <div class="small text-muted mb-1" style="font-size:.65rem">${fmt(d.calories) || '—'}</div>
+        <div class="position-relative w-100" style="height:60px">
+          ${goalPct ? `<div class="position-absolute w-100" style="bottom:${goalPct}%;height:2px;background:rgba(0,0,0,.2);z-index:1"></div>` : ''}
+          <div class="position-absolute bottom-0 w-100 rounded-top"
+               style="height:${pct}%;background:var(${over ? '--cal-color' : '--brand-mid'});opacity:${d.calories ? 1 : 0.15}"></div>
+        </div>
+        <div class="small mt-1 fw-semibold ${isToday ? 'text-success' : 'text-muted'}"
+             style="font-size:.7rem">${d.day}</div>
+      </div>`;
+  }).join('');
+
+  const macros = [
+    ['Calories', '--cal-color',  totals.calories,  wt.calories,  'kcal'],
+    ['Protein',  '--prot-color', totals.protein_g, wt.protein_g, 'g'],
+    ['Carbs',    '--carb-color', totals.carbs_g,   wt.carbs_g,   'g'],
+    ['Fat',      '--fat-color',  totals.fat_g,     wt.fat_g,     'g'],
+  ];
+
+  const macroRows = macros.map(([name, color, actual, target]) => {
+    const pct  = target ? Math.min(Math.round(actual / target * 100), 100) : 0;
+    const over = target && actual > target;
+    return `
+      <div class="mb-2">
+        <div class="d-flex justify-content-between align-items-baseline mb-1 small">
+          <span class="fw-semibold">${name}</span>
+          <span class="${over ? 'text-danger fw-semibold' : 'text-muted'}">
+            ${fmt(actual)}${name === 'Calories' ? ' kcal' : 'g'}
+            ${target ? `<span class="text-muted fw-normal"> / ${fmt(target)}${name === 'Calories' ? ' kcal' : 'g'} · ${pct}%</span>` : ''}
+          </span>
+        </div>
+        <div class="progress macro-bar">
+          <div class="progress-bar" role="progressbar"
+               style="width:${pct}%; background-color:var(${color})"></div>
+        </div>
+      </div>`;
+  }).join('');
+
+  return `
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-calendar-week me-1"></i>This Week's Macros</span>
+        <span class="small text-muted">${label}</span>
+      </div>
+      <div class="card-body">
+        <div class="row g-4">
+          <div class="col-md-5">
+            <div class="small text-muted fw-semibold text-uppercase mb-2"
+                 style="font-size:.7rem;letter-spacing:.05em">Daily Calories</div>
+            <div class="d-flex gap-1 align-items-end">
+              ${dayStrip}
+            </div>
+            ${dailyCal
+              ? `<div class="text-muted mt-1" style="font-size:.7rem">
+                   — daily target line (${fmt(dailyCal)} kcal)
+                 </div>`
+              : ''}
+          </div>
+          <div class="col-md-7">
+            <div class="small text-muted fw-semibold text-uppercase mb-2"
+                 style="font-size:.7rem;letter-spacing:.05em">
+              Weekly Totals ${has_goal ? '' : '· <a href="#goals" class="text-warning">set a goal</a> to see targets'}
+            </div>
+            ${macroRows}
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function renderBody(el, summary, weekly) {
   const { totals, vs_goal, meals, goal } = summary;
   const hasGoal = goal && goal.calories_target != null;
 
@@ -98,7 +189,7 @@ function renderBody(el, summary) {
       <div class="col-lg-7">
         <div class="card h-100">
           <div class="card-header d-flex justify-content-between align-items-center">
-            <span><i class="bi bi-bar-chart-fill me-1"></i>Nutrition Summary</span>
+            <span><i class="bi bi-bar-chart-fill me-1"></i>Today's Nutrition</span>
             ${!hasGoal
               ? `<a href="#goals" class="btn btn-warning btn-sm py-0">Set a goal</a>`
               : ''}
@@ -113,6 +204,11 @@ function renderBody(el, summary) {
               : ''}
           </div>
         </div>
+      </div>
+    </div>
+    <div class="row g-4 mt-0">
+      <div class="col-12">
+        ${weeklyCard(weekly)}
       </div>
     </div>`;
 

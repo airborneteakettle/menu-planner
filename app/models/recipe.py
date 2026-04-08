@@ -13,6 +13,13 @@ class Tag(db.Model):
     hidden = db.Column(db.Boolean, nullable=False, default=False, server_default='0')
 
 
+class RecipeRating(db.Model):
+    __tablename__ = 'recipe_rating'
+    user_id   = db.Column(db.Integer, db.ForeignKey('user.id'),   primary_key=True)
+    recipe_id = db.Column(db.Integer, db.ForeignKey('recipe.id'), primary_key=True)
+    rating    = db.Column(db.Integer, nullable=False)
+
+
 class Recipe(db.Model):
     id          = db.Column(db.Integer, primary_key=True)
     name        = db.Column(db.String(200), nullable=False)
@@ -25,21 +32,26 @@ class Recipe(db.Model):
     carbs_g   = db.Column(db.Float)
     fat_g     = db.Column(db.Float)
 
-    # e.g. "breakfast", "lunch", "dinner", "snack" — set manually
     meal_type        = db.Column(db.String(50))
     source_url       = db.Column(db.String(2048))
-    nutrition_source = db.Column(db.String(20))  # "page" or "usda_estimate"
+    nutrition_source = db.Column(db.String(20))
     instructions     = db.Column(db.Text)
-    rating           = db.Column(db.Integer)      # 1–5, nullable
 
     tags        = db.relationship("Tag", secondary=recipe_tags, lazy="subquery",
                                   backref=db.backref("recipes", lazy=True))
     ingredients = db.relationship("Ingredient", backref="recipe", lazy=True,
                                   cascade="all, delete-orphan")
     menu_entries = db.relationship("MenuEntry", backref="recipe", lazy=True,
+                                   cascade="all, delete-orphan")
+    ratings     = db.relationship("RecipeRating", backref="recipe", lazy="dynamic",
                                   cascade="all, delete-orphan")
 
-    def to_dict(self):
+    @property
+    def avg_rating(self):
+        vals = [r.rating for r in self.ratings]
+        return round(sum(vals) / len(vals), 1) if vals else None
+
+    def to_dict(self, my_rating=None):
         return {
             "id":               self.id,
             "name":             self.name,
@@ -53,7 +65,8 @@ class Recipe(db.Model):
             "source_url":       self.source_url,
             "nutrition_source": self.nutrition_source,
             "instructions":     self.instructions,
-            "rating":           self.rating,
+            "rating":           self.avg_rating,
+            "my_rating":        my_rating,
             "tags":             [t.name for t in self.tags],
             "ingredients":      [i.to_dict() for i in self.ingredients],
         }

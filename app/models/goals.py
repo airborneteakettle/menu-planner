@@ -2,7 +2,8 @@ from app import db
 from datetime import date
 
 class DietGoal(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
+    id      = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
     calories_target = db.Column(db.Float)
     protein_g_target = db.Column(db.Float)
     carbs_g_target = db.Column(db.Float)

@@ -5,6 +5,10 @@ async function req(path, options = {}) {
     headers: { 'Content-Type': 'application/json' },
     ...options,
   });
+  if (res.status === 401) {
+    window.location.href = '/login';
+    return;
+  }
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
     throw new Error(data.error || `HTTP ${res.status}`);
@@ -30,7 +34,10 @@ export const api = {
     add:      (data)    => req('/menu/', { method: 'POST', body: JSON.stringify(data) }),
     remove:   (id)      => req(`/menu/${id}`, { method: 'DELETE' }),
     summary:  (date)    => req(`/menu/daily-summary?date=${date}`),
+    weeklySummary: (start) => req(`/menu/weekly-summary${start ? '?start=' + start : ''}`),
     shopping: (s, e)    => req(`/menu/shopping-list?start=${s}&end=${e}`),
+    share:   (id, userId) => req(`/menu/${id}/share`, { method: 'POST', body: JSON.stringify({ user_id: userId }) }),
+    unshare: (id, userId) => req(`/menu/${id}/share/${userId}`, { method: 'DELETE' }),
     customItems: {
       list:   ()        => req('/menu/custom-items'),
       add:    (data)    => req('/menu/custom-items', { method: 'POST', body: JSON.stringify(data) }),
@@ -41,6 +48,9 @@ export const api = {
     list:    () => req('/goals/'),
     current: () => req('/goals/current'),
     create:  (d) => req('/goals/', { method: 'POST', body: JSON.stringify(d) }),
+  },
+  users: {
+    list: () => req('/users/'),
   },
   settings: {
     autoTagRecipes: () => req('/settings/auto-tag-recipes', { method: 'POST' }),

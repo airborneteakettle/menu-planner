@@ -147,9 +147,12 @@ const DIET_TAG_CLS = { vegan: 'tag-pill-vegan', vegetarian: 'tag-pill-vegetarian
 
 function buildPillsHtml(r) {
   const parts = [];
-  if (r.rating) {
+  // Show my_rating (personal) for the pill; fall back to avg if not yet rated
+  const displayRating = r.my_rating || r.rating;
+  if (displayRating) {
+    const label = r.my_rating ? '' : ' title="avg"';
     parts.push(
-      `<span class="badge bg-warning-subtle text-warning-emphasis border" style="font-size:.68rem;letter-spacing:0">${stars(r.rating, 5)}</span>`
+      `<span class="badge bg-warning-subtle text-warning-emphasis border" style="font-size:.68rem;letter-spacing:0"${label}>${stars(Math.round(displayRating), 5)}</span>`
     );
   }
   const displayTags = [...r.tags];
@@ -288,13 +291,14 @@ function populateModal(r, allTags) {
     <div class="d-flex flex-wrap gap-4 mb-3 pb-3 border-bottom">
       <div>
         <div class="small text-muted fw-semibold mb-1 text-uppercase" style="font-size:.7rem;letter-spacing:.05em">Rating</div>
-        <div class="star-input" data-recipe-id="${r.id}" data-current="${r.rating || 0}">
+        <div class="star-input" data-recipe-id="${r.id}" data-current="${r.my_rating || 0}">
           ${[1,2,3,4,5].map(v =>
             `<span class="star-btn" data-val="${v}"
-                   style="color:${(r.rating||0) >= v ? '#f59e0b' : '#d1d5db'}">★</span>`
+                   style="color:${(r.my_rating||0) >= v ? '#f59e0b' : '#d1d5db'}">★</span>`
           ).join('')}
-          <a href="#" class="clear-rating ms-1 small text-muted ${r.rating ? '' : 'd-none'}">clear</a>
+          <a href="#" class="clear-rating ms-1 small text-muted ${r.my_rating ? '' : 'd-none'}">clear</a>
         </div>
+        ${r.rating ? `<div class="small text-muted mt-1">Avg: ${stars(Math.round(r.rating), 5)} <span style="font-size:.75rem">(${r.rating})</span></div>` : ''}
       </div>
       <div class="flex-grow-1">
         <div class="small text-muted fw-semibold mb-1 text-uppercase" style="font-size:.7rem;letter-spacing:.05em">Tags</div>
@@ -381,8 +385,16 @@ function wireStars(bodyEl, recipe) {
         container.dataset.current = val;
         paint(val);
         clearLink.classList.remove('d-none');
+        const updated = await api.recipes.setRating(recipe.id, val);
+        container.dataset.current = val;
+        paint(val);
+        clearLink.classList.remove('d-none');
         const idx = _allRecipes.findIndex(r => r.id === recipe.id);
-        if (idx !== -1) { _allRecipes[idx].rating = val; refreshCardPills(recipe.id); }
+        if (idx !== -1) {
+          _allRecipes[idx].my_rating = val;
+          _allRecipes[idx].rating    = updated?.rating ?? val;
+          refreshCardPills(recipe.id);
+        }
       } catch (e) { toast(e.message, 'danger'); }
     });
   });
@@ -390,12 +402,16 @@ function wireStars(bodyEl, recipe) {
   clearLink?.addEventListener('click', async e => {
     e.preventDefault();
     try {
-      await api.recipes.setRating(recipe.id, null);
+      const updated = await api.recipes.setRating(recipe.id, null);
       container.dataset.current = 0;
       paint(0);
       clearLink.classList.add('d-none');
       const idx = _allRecipes.findIndex(r => r.id === recipe.id);
-      if (idx !== -1) { _allRecipes[idx].rating = null; refreshCardPills(recipe.id); }
+      if (idx !== -1) {
+        _allRecipes[idx].my_rating = null;
+        _allRecipes[idx].rating    = updated?.rating ?? null;
+        refreshCardPills(recipe.id);
+      }
     } catch (e) { toast(e.message, 'danger'); }
   });
 }

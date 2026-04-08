@@ -137,6 +137,50 @@ body {
 }
 .entry-chip .btn-remove:hover { color: #c62828; }
 
+/* Shared entry chip (viewing someone else's) */
+.entry-chip-shared {
+  background: #e8f0fe;
+  color: #1a56db;
+}
+.entry-chip-shared:hover { background: #c7d9fd; }
+
+.chip-owner {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #1a56db;
+  color: #fff;
+  font-size: .6rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.chip-shared-badge {
+  color: #666;
+  font-size: .7rem;
+  flex-shrink: 0;
+}
+
+.btn-share-entry {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: .75rem;
+  line-height: 1;
+  color: #888;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.btn-share-entry:hover { color: var(--brand); }
+
+.share-popover {
+  border-radius: 8px;
+  font-size: .85rem;
+}
+
 .btn-add-entry {
   background: none;
   border: 1px dashed #adb5bd;

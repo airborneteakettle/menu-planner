@@ -53,7 +53,9 @@ export const api = {
     list: () => req('/users/'),
   },
   settings: {
-    autoTagRecipes:  () => req('/settings/auto-tag-recipes', { method: 'POST' }),
+    getAccount:      ()        => req('/settings/account'),
+    updateAccount:   (email)   => req('/settings/account', { method: 'POST', body: JSON.stringify({ email }) }),
+    autoTagRecipes:  ()        => req('/settings/auto-tag-recipes', { method: 'POST' }),
     changePassword: (current_password, new_password) =>
       req('/settings/change-password', { method: 'POST', body: JSON.stringify({ current_password, new_password }) }),
   },

@@ -7,6 +7,31 @@ from app.services.auto_tags import apply_auto_tags
 bp = Blueprint("settings", __name__)
 
 
+@bp.route("/account", methods=["GET"])
+def get_account():
+    return jsonify({"username": current_user.username, "email": current_user.email})
+
+
+@bp.route("/account", methods=["POST"])
+def update_account():
+    from app.models.user import User
+    data  = request.get_json() or {}
+    email = data.get("email", "").strip().lower()
+
+    if not email:
+        return jsonify({"error": "Email is required"}), 400
+    if "@" not in email:
+        return jsonify({"error": "Invalid email address"}), 400
+
+    conflict = User.query.filter(User.email == email, User.id != current_user.id).first()
+    if conflict:
+        return jsonify({"error": "That email is already in use"}), 400
+
+    current_user.email = email
+    db.session.commit()
+    return jsonify({"ok": True})
+
+
 @bp.route("/change-password", methods=["POST"])
 def change_password():
     data = request.get_json() or {}

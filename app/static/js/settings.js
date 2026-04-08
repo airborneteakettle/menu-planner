@@ -19,6 +19,26 @@ export async function renderSettings(el) {
           </div>
         </div>
 
+        <!-- Account card -->
+        <div class="card mb-4" id="account-card">
+          <div class="card-header bg-white fw-semibold">
+            <i class="bi bi-person-circle me-2 text-success"></i>Account
+          </div>
+          <div class="card-body">
+            <div class="mb-3">
+              <label class="form-label small fw-semibold">Username</label>
+              <input type="text" class="form-control form-control-sm" id="acct-username" disabled>
+            </div>
+            <div class="mb-3">
+              <label class="form-label small fw-semibold">Email</label>
+              <input type="email" class="form-control form-control-sm" id="acct-email" autocomplete="email">
+            </div>
+            <button class="btn btn-success btn-sm" id="btn-save-account">
+              <i class="bi bi-check-lg me-1"></i>Save
+            </button>
+          </div>
+        </div>
+
         <!-- Change password card -->
         <div class="card mb-4">
           <div class="card-header bg-white fw-semibold">
@@ -68,7 +88,36 @@ export async function renderSettings(el) {
 
   document.getElementById('btn-run-auto-tag').addEventListener('click', runAutoTag);
   document.getElementById('btn-change-password').addEventListener('click', changePassword);
-  await loadHousehold();
+  document.getElementById('btn-save-account').addEventListener('click', saveAccount);
+  await Promise.all([loadHousehold(), loadAccount()]);
+}
+
+// ── Account ───────────────────────────────────────────────────────────────────
+
+async function loadAccount() {
+  try {
+    const a = await api.settings.getAccount();
+    document.getElementById('acct-username').value = a.username || '';
+    document.getElementById('acct-email').value    = a.email    || '';
+  } catch (e) {
+    toast(e.message, 'danger');
+  }
+}
+
+async function saveAccount() {
+  const email = document.getElementById('acct-email').value.trim();
+  if (!email) { toast('Email is required', 'danger'); return; }
+
+  const btn = document.getElementById('btn-save-account');
+  btn.disabled = true;
+  try {
+    await api.settings.updateAccount(email);
+    toast('Account updated');
+  } catch (e) {
+    toast(e.message, 'danger');
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 // ── Household ─────────────────────────────────────────────────────────────────

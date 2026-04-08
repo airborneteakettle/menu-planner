@@ -1,6 +1,47 @@
 import re
-from recipe_scrapers import scrape_me
+import requests
+from recipe_scrapers import scrape_html
 from app.services.usda import estimate_recipe_nutrition, parse_ingredient
+
+_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/124.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.5",
+}
+
+
+def _fetch_html(url: str, scrapingbee_key: str | None = None) -> str:
+    """Fetch page HTML directly, falling back to ScrapingBee on 403."""
+    resp = requests.get(url, headers=_HEADERS, timeout=15, allow_redirects=True)
+    if resp.status_code != 403:
+        resp.raise_for_status()
+        return resp.text
+
+    if not scrapingbee_key:
+        raise ValueError(
+            "This site is protected by Cloudflare and cannot be imported automatically. "
+            "Try adding the recipe manually instead."
+        )
+
+    # Fallback to ScrapingBee with JS rendering enabled
+    resp = requests.get(
+        "https://app.scrapingbee.com/api/v1/",
+        params={
+            "api_key":        scrapingbee_key,
+            "url":            url,
+            "render_js":      "true",
+            "wait":           "2000",
+            "premium_proxy":  "true",
+        },
+        timeout=60,
+    )
+    if not resp.ok:
+        raise ValueError(f"ScrapingBee failed ({resp.status_code}): {resp.text[:200]}")
+    return resp.text
 
 
 def _parse_numeric(value: str | None) -> float | None:
@@ -19,12 +60,25 @@ def _parse_servings(yields_str: str | None) -> int:
     return int(match.group()) if match else 1
 
 
-def import_recipe_from_url(url: str, usda_api_key: str) -> dict:
+def import_recipe_from_url(url: str, usda_api_key: str, scrapingbee_key: str | None = None) -> dict:
     """
     Scrape a recipe URL and return a structured dict ready to insert into the DB.
-    Falls back to USDA ingredient lookup if the page doesn't provide nutrition.
+    Falls back to ScrapingBee on 403, then USDA for missing nutrition.
     """
-    scraper = scrape_me(url)
+    html = _fetch_html(url, scrapingbee_key)
+    scraper = scrape_html(html, org_url=url)
+
+    name = ""
+    try:
+        name = scraper.title() or ""
+    except Exception:
+        pass
+
+    servings = 1
+    try:
+        servings = _parse_servings(scraper.yields())
+    except Exception:
+        pass
 
     ingredients = []
     try:
@@ -48,25 +102,12 @@ def import_recipe_from_url(url: str, usda_api_key: str) -> dict:
     # --- USDA fallback if any macro is missing ---
     if None in (calories, protein_g, fat_g, carbs_g) and ingredients:
         usda = estimate_recipe_nutrition(ingredients, usda_api_key)
-        # USDA returns totals for the whole recipe; divide by servings to get per-serving
         srv = servings or 1
         calories  = calories  or (usda.get("calories")  or 0) / srv or None
         protein_g = protein_g or (usda.get("protein_g") or 0) / srv or None
         fat_g     = fat_g     or (usda.get("fat_g")     or 0) / srv or None
         carbs_g   = carbs_g   or (usda.get("carbs_g")   or 0) / srv or None
         fiber_g   = fiber_g   or (usda.get("fiber_g")   or 0) / srv or None
-
-    name = ""
-    try:
-        name = scraper.title() or ""
-    except Exception:
-        pass
-
-    servings = 1
-    try:
-        servings = _parse_servings(scraper.yields())
-    except Exception:
-        pass
 
     instructions = None
     try:

@@ -47,10 +47,12 @@ def import_recipe_from_url(url: str, usda_api_key: str) -> dict:
     # --- USDA fallback if any macro is missing ---
     if None in (calories, protein_g, fat_g, carbs_g) and ingredients:
         usda = estimate_recipe_nutrition(ingredients, usda_api_key)
-        calories  = calories  or usda.get("calories")
-        protein_g = protein_g or usda.get("protein_g")
-        fat_g     = fat_g     or usda.get("fat_g")
-        carbs_g   = carbs_g   or usda.get("carbs_g")
+        # USDA returns totals for the whole recipe; divide by servings to get per-serving
+        srv = servings or 1
+        calories  = calories  or (usda.get("calories")  or 0) / srv or None
+        protein_g = protein_g or (usda.get("protein_g") or 0) / srv or None
+        fat_g     = fat_g     or (usda.get("fat_g")     or 0) / srv or None
+        carbs_g   = carbs_g   or (usda.get("carbs_g")   or 0) / srv or None
 
     name = ""
     try:

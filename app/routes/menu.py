@@ -70,7 +70,8 @@ def daily_summary():
         recipe = entry.recipe
         if not recipe:
             continue
-        factor = (entry.servings or 1) / (recipe.servings or 1)
+        # Nutrition values are stored per-serving; multiply by how many servings eaten
+        factor = entry.servings or 1
         for k in totals:
             totals[k] += (getattr(recipe, k) or 0) * factor
 
@@ -116,7 +117,7 @@ def weekly_summary():
         recipe = entry.recipe
         if not recipe:
             continue
-        factor = (entry.servings or 1) / (recipe.servings or 1)
+        factor = entry.servings or 1
         for macro in MACROS:
             day_map[entry.date][macro] += (getattr(recipe, macro) or 0) * factor
 

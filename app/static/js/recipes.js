@@ -700,15 +700,20 @@ async function saveManualRecipe() {
   const nutrition    = _pendingNutrition || {};
   const ingredients  = getIngredients();
   const instructions = document.getElementById('ar-instructions').value.trim() || null;
+  const servings     = +document.getElementById('ar-servings').value || 1;
+
+  // USDA estimate returns totals for the whole recipe; store per-serving so
+  // the daily summary can simply multiply by entry.servings
+  const perServing = (v) => (v || null) && (v / servings);
 
   try {
     const recipe = await api.recipes.create({
       name:         document.getElementById('ar-name').value.trim(),
-      servings:     +document.getElementById('ar-servings').value || 1,
-      calories:     nutrition.calories  || null,
-      protein_g:    nutrition.protein_g || null,
-      carbs_g:      nutrition.carbs_g   || null,
-      fat_g:        nutrition.fat_g     || null,
+      servings,
+      calories:     perServing(nutrition.calories),
+      protein_g:    perServing(nutrition.protein_g),
+      carbs_g:      perServing(nutrition.carbs_g),
+      fat_g:        perServing(nutrition.fat_g),
       nutrition_source: _pendingNutrition ? 'usda_estimate' : null,
       ingredients,
       instructions,

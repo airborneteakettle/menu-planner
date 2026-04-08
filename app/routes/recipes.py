@@ -141,12 +141,6 @@ def import_recipe():
     try:
         scraped = import_recipe_from_url(url, api_key)
     except Exception as e:
-        msg = str(e)
-        if "403" in msg or "Forbidden" in msg or "Cloudflare" in msg:
-            return jsonify({"error": (
-                "This site is protected by Cloudflare and cannot be imported automatically. "
-                "Try adding the recipe manually instead."
-            )}), 422
         return jsonify({"error": f"Failed to scrape recipe: {e}"}), 422
 
     recipe = Recipe(

@@ -53,6 +53,7 @@ async function loadGoals() {
           ${statCard('Carbs',     fmt(current.carbs_g_target),   'g',    '--carb-color')}
           ${statCard('Fat',       fmt(current.fat_g_target),     'g',    '--fat-color')}
           ${statCard('Fiber',     fmt(current.fiber_g_target),   current.fiber_g_target ? 'g' : 'not set', '--fiber-color')}
+          ${current.goal_weight != null ? statCard('Goal Weight', current.goal_weight, '', '--brand-mid') : ''}
         </div>
         ${current.notes ? `<p class="text-muted small mt-3 mb-0"><i class="bi bi-sticky me-1"></i>${current.notes}</p>` : ''}
       </div>
@@ -131,6 +132,13 @@ async function loadGoals() {
               </label>
               <input type="number" class="form-control" name="fiber_g_target" min="0" step="1"
                      value="${current?.fiber_g_target ?? ''}" placeholder="e.g. 25">
+            </div>
+            <div class="col-sm-6 col-md-4">
+              <label class="form-label fw-medium">
+                Goal Weight <span class="text-muted fw-normal small">optional</span>
+              </label>
+              <input type="number" class="form-control" name="goal_weight" min="0" step="0.1"
+                     value="${current?.goal_weight ?? ''}" placeholder="e.g. 175">
             </div>
             <div class="col-12">
               <label class="form-label fw-medium">Notes <span class="text-muted fw-normal small">optional</span></label>

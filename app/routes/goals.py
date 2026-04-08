@@ -32,6 +32,7 @@ def create_goal():
         carbs_g_target   = data.get("carbs_g_target"),
         fat_g_target     = data.get("fat_g_target"),
         fiber_g_target   = data.get("fiber_g_target"),
+        goal_weight      = data.get("goal_weight"),
         notes            = data.get("notes"),
     )
     db.session.add(goal)

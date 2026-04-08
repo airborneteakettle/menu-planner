@@ -61,4 +61,9 @@ export const api = {
     invite: (identifier) => req('/household/invite', { method: 'POST', body: JSON.stringify({ identifier }) }),
     remove: (userId)     => req(`/household/members/${userId}`, { method: 'DELETE' }),
   },
+  weight: {
+    list:   ()     => req('/weight/'),
+    log:    (data) => req('/weight/', { method: 'POST', body: JSON.stringify(data) }),
+    remove: (id)   => req(`/weight/${id}`, { method: 'DELETE' }),
+  },
 };

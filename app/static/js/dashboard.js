@@ -3,6 +3,7 @@ import { today, formatDateLong, fmt, MEAL_TYPES } from './utils.js';
 import { openRecipeModal }              from './recipes.js';
 
 let _el = null;
+let _weightChart = null;
 
 export async function renderDashboard(el) {
   _el = el;
@@ -20,16 +21,20 @@ export async function renderDashboard(el) {
     </div>`;
 
   try {
-    const [summary, weekly] = await Promise.all([
+    const [summary, weekly, weightEntries, goalData] = await Promise.all([
       api.menu.summary(dateStr),
       api.menu.weeklySummary(),
+      api.weight.list(),
+      api.goals.current().catch(() => null),
     ]);
-    renderBody(el.querySelector('#dash-body'), summary, weekly);
+    renderBody(el.querySelector('#dash-body'), summary, weekly, weightEntries, goalData);
   } catch (e) {
     el.querySelector('#dash-body').innerHTML =
       `<div class="alert alert-warning"><i class="bi bi-exclamation-triangle me-1"></i>${e.message}</div>`;
   }
 }
+
+// ── Macro helpers ─────────────────────────────────────────────────────────────
 
 function macroRow(label, colorVar, actual, target) {
   const pct  = target ? Math.min(Math.round(actual / target * 100), 100) : 0;
@@ -51,6 +56,8 @@ function macroRow(label, colorVar, actual, target) {
     </div>`;
 }
 
+// ── Weekly card ───────────────────────────────────────────────────────────────
+
 function weeklyCard(w) {
   const { days, totals, weekly_targets: wt, has_goal, week_start, week_end } = w;
 
@@ -58,7 +65,6 @@ function weeklyCard(w) {
     new Date(iso + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   const label = `${fmtDate(week_start)} – ${fmtDate(week_end)}`;
 
-  // Day-by-day calorie strip
   const dailyCal  = has_goal && wt.calories ? wt.calories / 7 : 0;
   const maxCal    = Math.max(...days.map(d => d.calories), dailyCal, 1);
   const todayIso  = today();
@@ -139,9 +145,156 @@ function weeklyCard(w) {
     </div>`;
 }
 
-function renderBody(el, summary, weekly) {
+// ── Weight card ───────────────────────────────────────────────────────────────
+
+function weightCard(entries, goalWeight) {
+  const latest  = entries.length ? entries[entries.length - 1] : null;
+  const current = latest?.weight ?? null;
+
+  let statsHtml = '';
+  if (current != null) {
+    const diff     = goalWeight != null ? (current - goalWeight) : null;
+    const diffSign = diff != null ? (diff > 0 ? '+' : '') : '';
+    statsHtml = `
+      <div class="d-flex gap-4 mb-3 small">
+        <div>
+          <div class="text-muted mb-0" style="font-size:.7rem;text-transform:uppercase;letter-spacing:.04em">Current</div>
+          <div class="fw-bold fs-5">${current}</div>
+        </div>
+        ${goalWeight != null ? `
+          <div>
+            <div class="text-muted mb-0" style="font-size:.7rem;text-transform:uppercase;letter-spacing:.04em">Goal</div>
+            <div class="fw-bold fs-5">${goalWeight}</div>
+          </div>
+          <div>
+            <div class="text-muted mb-0" style="font-size:.7rem;text-transform:uppercase;letter-spacing:.04em">To go</div>
+            <div class="fw-bold fs-5 ${diff > 0 ? 'text-warning' : 'text-success'}">${diffSign}${diff.toFixed(1)}</div>
+          </div>` : ''}
+      </div>`;
+  } else {
+    statsHtml = `<p class="text-muted small mb-3">No entries yet — log your first weight below.</p>`;
+  }
+
+  const chartHtml = entries.length > 1
+    ? `<div class="mb-3" style="position:relative;height:180px">
+         <canvas id="weight-chart"></canvas>
+       </div>`
+    : '';
+
+  return `
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-activity me-1"></i>Weight</span>
+        ${goalWeight == null
+          ? `<a href="#goals" class="btn btn-link btn-sm p-0 text-muted" style="font-size:.8rem">Set goal weight</a>`
+          : ''}
+      </div>
+      <div class="card-body">
+        ${statsHtml}
+        ${chartHtml}
+        <form id="weight-log-form" class="d-flex gap-2 align-items-center flex-wrap">
+          <input type="number" class="form-control form-control-sm" id="wl-weight"
+                 placeholder="Weight" min="0" step="0.1" style="max-width:110px"
+                 ${latest ? `value="${latest.weight}"` : ''}>
+          <input type="date" class="form-control form-control-sm" id="wl-date"
+                 value="${today()}" style="max-width:160px">
+          <button type="submit" class="btn btn-success btn-sm">
+            <i class="bi bi-check-lg me-1"></i>Log
+          </button>
+        </form>
+        ${entries.length > 0 ? `
+          <div class="mt-3">
+            <div class="small text-muted fw-semibold text-uppercase mb-1"
+                 style="font-size:.68rem;letter-spacing:.04em">Recent entries</div>
+            <div id="weight-entries-list">
+              ${entries.slice(-5).reverse().map(e => `
+                <div class="d-flex align-items-center gap-2 py-1 border-bottom small">
+                  <span class="text-muted" style="min-width:90px">${e.date}</span>
+                  <span class="fw-semibold">${e.weight}</span>
+                  <button class="btn btn-link btn-sm p-0 text-danger ms-auto btn-del-weight"
+                          data-id="${e.id}" title="Delete">
+                    <i class="bi bi-trash3" style="font-size:.75rem"></i>
+                  </button>
+                </div>`).join('')}
+            </div>
+          </div>` : ''}
+      </div>
+    </div>`;
+}
+
+function buildWeightChart(entries, goalWeight) {
+  const canvas = document.getElementById('weight-chart');
+  if (!canvas) return;
+
+  // Destroy previous instance if it exists (chart.js keeps a registry)
+  const existing = Chart.getChart(canvas);
+  if (existing) existing.destroy();
+
+  const labels   = entries.map(e => e.date);
+  const datasets = [
+    {
+      label: 'Weight',
+      data: entries.map(e => e.weight),
+      borderColor: '#2e7d32',
+      backgroundColor: 'rgba(46,125,50,.08)',
+      tension: 0.3,
+      fill: true,
+      pointRadius: 3,
+      pointHoverRadius: 5,
+      borderWidth: 2,
+    },
+  ];
+
+  if (goalWeight != null) {
+    datasets.push({
+      label: 'Goal',
+      data: entries.map(() => goalWeight),
+      borderColor: '#e64a19',
+      borderDash: [6, 3],
+      pointRadius: 0,
+      fill: false,
+      borderWidth: 1.5,
+    });
+  }
+
+  _weightChart = new Chart(canvas, {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          display: goalWeight != null,
+          labels: { boxWidth: 12, font: { size: 11 }, padding: 8 },
+        },
+        tooltip: {
+          callbacks: {
+            title: items => items[0].label,
+            label: item => ` ${item.dataset.label}: ${item.parsed.y}`,
+          },
+        },
+      },
+      scales: {
+        x: {
+          ticks: { font: { size: 10 }, maxTicksLimit: 7, maxRotation: 0 },
+          grid:  { display: false },
+        },
+        y: {
+          ticks: { font: { size: 10 } },
+          grid:  { color: '#f0f0f0' },
+        },
+      },
+    },
+  });
+}
+
+// ── Main render ───────────────────────────────────────────────────────────────
+
+function renderBody(el, summary, weekly, weightEntries, goalData) {
   const { totals, vs_goal, meals, goal } = summary;
-  const hasGoal = goal && goal.calories_target != null;
+  const hasGoal   = goal && goal.calories_target != null;
+  const goalWeight = goalData?.goal_weight ?? null;
 
   // Group meals by type
   const byType = {};
@@ -210,9 +363,55 @@ function renderBody(el, summary, weekly) {
       <div class="col-12">
         ${weeklyCard(weekly)}
       </div>
+    </div>
+    <div class="row g-4 mt-0">
+      <div class="col-lg-6">
+        ${weightCard(weightEntries, goalWeight)}
+      </div>
     </div>`;
 
+  // Wire meal chips
   el.querySelectorAll('.entry-chip[data-recipe-id]').forEach(chip =>
     chip.addEventListener('click', () => openRecipeModal(+chip.dataset.recipeId))
   );
+
+  // Wire weight log form
+  document.getElementById('weight-log-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const weight = parseFloat(document.getElementById('wl-weight').value);
+    const date   = document.getElementById('wl-date').value;
+    if (!weight || !date) return;
+    try {
+      await api.weight.log({ weight, date });
+      window.refreshView();
+    } catch (err) { toast(err.message, 'danger'); }
+  });
+
+  // Wire delete buttons
+  el.querySelectorAll('.btn-del-weight').forEach(btn =>
+    btn.addEventListener('click', async () => {
+      try {
+        await api.weight.remove(+btn.dataset.id);
+        window.refreshView();
+      } catch (err) { toast(err.message, 'danger'); }
+    })
+  );
+
+  // Build chart after DOM is ready
+  if (weightEntries.length > 1) {
+    buildWeightChart(weightEntries, goalWeight);
+  }
+}
+
+function toast(msg, type = 'success') {
+  const id = 'toast-' + Date.now();
+  document.getElementById('toast-container').insertAdjacentHTML('beforeend', `
+    <div id="${id}" class="toast align-items-center text-bg-${type} border-0 show" role="alert">
+      <div class="d-flex">
+        <div class="toast-body">${msg}</div>
+        <button type="button" class="btn-close btn-close-white me-2 m-auto"
+                data-bs-dismiss="toast"></button>
+      </div>
+    </div>`);
+  setTimeout(() => document.getElementById(id)?.remove(), 4000);
 }

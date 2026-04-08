@@ -51,9 +51,14 @@ def _fetch_html(url: str) -> str:
         page = browser.new_page(extra_http_headers={
             "Accept-Language": "en-US,en;q=0.9",
         })
-        page.goto(url, wait_until="domcontentloaded", timeout=30000)
+        page.goto(url, wait_until="load", timeout=30000)
+        page.wait_for_timeout(2000)
+        title = page.title()
         html = page.content()
         browser.close()
+    # Cloudflare JS challenge page — Playwright can't bypass it
+    if "just a moment" in title.lower() or "just a moment" in html[:2000].lower():
+        raise ValueError("403 Forbidden — Cloudflare is blocking this site even with a browser.")
     return html
 
 

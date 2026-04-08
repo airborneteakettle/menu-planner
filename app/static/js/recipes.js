@@ -518,6 +518,10 @@ function openManualAddModal() {
   document.getElementById('ar-name').value         = '';
   document.getElementById('ar-servings').value     = '4';
   document.getElementById('ar-instructions').value = '';
+  document.getElementById('ar-calories').value     = '';
+  document.getElementById('ar-protein').value      = '';
+  document.getElementById('ar-carbs').value        = '';
+  document.getElementById('ar-fat').value          = '';
   document.getElementById('ar-error').classList.add('d-none');
   document.getElementById('ar-nutrition-panel').classList.add('d-none');
   document.getElementById('ar-btn-save').classList.add('d-none');
@@ -543,10 +547,19 @@ const UNITS = [
   'clove', 'slice', 'can', 'bunch', 'sprig', 'stalk', 'whole',
 ];
 
+function _updateSaveVisibility() {
+  const anyMacro = [...document.querySelectorAll('.ar-macro')]
+    .some(el => el.value.trim() !== '');
+  document.getElementById('ar-btn-save').classList.toggle('d-none', !anyMacro && !_pendingNutrition);
+}
+
 function setupManualAddModal() {
   document.getElementById('ar-add-ingredient').addEventListener('click', () => addIngredientRow());
   document.getElementById('ar-btn-check').addEventListener('click', checkNutrition);
   document.getElementById('ar-btn-save').addEventListener('click', saveManualRecipe);
+  document.querySelectorAll('.ar-macro').forEach(el =>
+    el.addEventListener('input', _updateSaveVisibility)
+  );
 }
 
 function addIngredientRow(amount = '', unit = '', name = '') {
@@ -682,7 +695,7 @@ async function checkNutrition() {
 
     document.getElementById('ar-nutrition-panel').innerHTML = renderNutritionBreakdown(totals, breakdown);
     panel.classList.remove('d-none');
-    document.getElementById('ar-btn-save').classList.remove('d-none');
+    _updateSaveVisibility();
   } catch (e) {
     errEl.textContent = e.message;
     errEl.classList.remove('d-none');
@@ -700,21 +713,33 @@ async function saveManualRecipe() {
   const nutrition    = _pendingNutrition || {};
   const ingredients  = getIngredients();
   const instructions = document.getElementById('ar-instructions').value.trim() || null;
-  const servings     = +document.getElementById('ar-servings').value || 1;
+  const servings = +document.getElementById('ar-servings').value || 1;
 
-  // USDA estimate returns totals for the whole recipe; store per-serving so
-  // the daily summary can simply multiply by entry.servings
+  // Manual macro fields — already per-serving, take precedence over USDA estimate
+  const manualCals  = parseFloat(document.getElementById('ar-calories').value) || null;
+  const manualProt  = parseFloat(document.getElementById('ar-protein').value)  || null;
+  const manualCarbs = parseFloat(document.getElementById('ar-carbs').value)    || null;
+  const manualFat   = parseFloat(document.getElementById('ar-fat').value)      || null;
+  const hasManual   = manualCals || manualProt || manualCarbs || manualFat;
+
+  // USDA totals need dividing by servings; manual values are already per-serving
   const perServing = (v) => (v || null) && (v / servings);
+
+  const finalCals  = manualCals  ?? perServing(nutrition.calories);
+  const finalProt  = manualProt  ?? perServing(nutrition.protein_g);
+  const finalCarbs = manualCarbs ?? perServing(nutrition.carbs_g);
+  const finalFat   = manualFat   ?? perServing(nutrition.fat_g);
+  const nutritionSource = hasManual ? 'manual' : (_pendingNutrition ? 'usda_estimate' : null);
 
   try {
     const recipe = await api.recipes.create({
       name:         document.getElementById('ar-name').value.trim(),
       servings,
-      calories:     perServing(nutrition.calories),
-      protein_g:    perServing(nutrition.protein_g),
-      carbs_g:      perServing(nutrition.carbs_g),
-      fat_g:        perServing(nutrition.fat_g),
-      nutrition_source: _pendingNutrition ? 'usda_estimate' : null,
+      calories:     finalCals,
+      protein_g:    finalProt,
+      carbs_g:      finalCarbs,
+      fat_g:        finalFat,
+      nutrition_source: nutritionSource,
       ingredients,
       instructions,
     });

@@ -6,6 +6,7 @@ import { openRecipeModal }                    from './recipes.js';
 let _el        = null;
 let weekOffset = 0;
 let _users     = [];   // other users for share UI
+let dayIndex = (new Date().getDay() + 6) % 7; // 0=Mon … 6=Sun for current day
 
 export async function renderPlanner(el) {
   _el = el;
@@ -55,14 +56,23 @@ async function drawGrid() {
     return;
   }
 
-  // Build lookup: grid[date][meal_type] = [entry, ...]
+  // Build lookup: lookup[date][meal_type] = [entry, ...]
   const lookup = {};
   for (const e of entries) {
     const d = lookup[e.date] = lookup[e.date] || {};
     (d[e.meal_type] = d[e.meal_type] || []).push(e);
   }
 
-  const todayStr  = today();
+  const todayStr = today();
+
+  if (window.innerWidth < 768) {
+    buildDayView(grid, dates, lookup, todayStr);
+  } else {
+    buildWeekTable(grid, dates, lookup, todayStr);
+  }
+}
+
+function buildWeekTable(grid, dates, lookup, todayStr) {
   const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
   const headerCols = dates.map((d, i) => {
@@ -97,6 +107,72 @@ async function drawGrid() {
       </thead>
       <tbody>${rows}</tbody>
     </table>`;
+
+  wireGrid(grid);
+}
+
+function buildDayView(grid, dates, lookup, todayStr) {
+  const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const date    = dates[dayIndex];
+  const isToday = date === todayStr;
+
+  const dayLabel = `${DAY_NAMES[dayIndex]}, ${formatDate(date, { month: 'short', day: 'numeric' })}`;
+
+  const mealCards = MEAL_TYPES.map(meal => {
+    const dayEntries = lookup[date]?.[meal] || [];
+    const chips = dayEntries.map(e => entryChipHtml(e)).join('');
+    return `
+      <div class="card mb-2 border-0 shadow-sm day-meal-card">
+        <div class="card-header bg-white py-2 d-flex align-items-center">
+          <span class="small fw-bold text-uppercase" style="letter-spacing:.04em;color:#555">${meal}</span>
+        </div>
+        <div class="card-body py-2 px-3">
+          <div class="d-flex flex-wrap gap-1 align-items-center">
+            ${chips}
+            <button class="btn-add-entry" data-date="${date}" data-meal="${meal}">+</button>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+
+  grid.innerHTML = `
+    <div class="d-flex align-items-center gap-2 mb-3">
+      <button class="btn btn-outline-secondary btn-sm flex-shrink-0" id="btn-prev-day" title="Previous day">
+        <i class="bi bi-chevron-left"></i>
+      </button>
+      <div class="text-center flex-grow-1">
+        <div class="fw-semibold${isToday ? ' text-success' : ''}">${dayLabel}</div>
+        ${isToday ? '<div class="badge bg-success" style="font-size:.6rem;line-height:1.4">Today</div>' : ''}
+      </div>
+      <button class="btn btn-outline-secondary btn-sm flex-shrink-0" id="btn-next-day" title="Next day">
+        <i class="bi bi-chevron-right"></i>
+      </button>
+    </div>
+    ${mealCards}`;
+
+  document.getElementById('btn-prev-day').addEventListener('click', () => {
+    if (dayIndex > 0) {
+      dayIndex--;
+      buildDayView(grid, dates, lookup, todayStr);
+      wireGrid(grid);
+    } else {
+      weekOffset--;
+      dayIndex = 6;
+      drawGrid();
+    }
+  });
+
+  document.getElementById('btn-next-day').addEventListener('click', () => {
+    if (dayIndex < 6) {
+      dayIndex++;
+      buildDayView(grid, dates, lookup, todayStr);
+      wireGrid(grid);
+    } else {
+      weekOffset++;
+      dayIndex = 0;
+      drawGrid();
+    }
+  });
 
   wireGrid(grid);
 }

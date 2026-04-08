@@ -360,3 +360,93 @@ body {
 /* ── Nutrition source badge ─────────────────────────────── */
 .badge-usda { background: #fff3e0; color: #e65100; font-weight: 500; }
 .badge-page { background: #e8f5e9; color: #1b5e20; font-weight: 500; }
+
+/* ── Mobile: bottom nav bar ─────────────────────────────── */
+#bottom-nav {
+  display: none;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--brand);
+  box-shadow: 0 -2px 8px rgba(0,0,0,.22);
+  z-index: 1030;
+  justify-content: space-around;
+  align-items: stretch;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+#bottom-nav a {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: .45rem .2rem;
+  color: rgba(255,255,255,.65);
+  text-decoration: none;
+  font-size: .58rem;
+  gap: 2px;
+  transition: color .15s, background .15s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#bottom-nav a i {
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+#bottom-nav a.active,
+#bottom-nav a:hover {
+  color: #fff;
+  background: rgba(255,255,255,.15);
+  border-radius: 0;
+}
+
+/* ── Mobile responsive rules ────────────────────────────── */
+@media (max-width: 767px) {
+  /* Show bottom nav, hide top nav links */
+  #bottom-nav { display: flex; }
+  #navMenu    { display: none !important; }
+
+  /* Padding below main content so it clears the bottom nav */
+  .pb-nav { padding-bottom: 68px !important; }
+
+  /* Tighter page padding */
+  .container-fluid { padding-left: .6rem !important; padding-right: .6rem !important; }
+
+  /* Larger tap targets */
+  .btn-add-entry { min-height: 34px; padding: .25rem .6rem; }
+  .btn-remove    { min-width: 24px; min-height: 24px; }
+
+  /* Planner day-view cards */
+  .day-meal-card .card-header {
+    padding: .4rem .75rem;
+  }
+  .day-meal-card .card-body {
+    padding: .5rem .75rem;
+  }
+
+  /* Recipe modal: stack the two columns */
+  #recipe-modal-body .row.g-4 > [class*="col-md"] {
+    flex: 0 0 100%;
+    max-width: 100%;
+  }
+
+  /* Recipe grid: 2 per row on mobile */
+  .recipe-card-col { flex: 0 0 50%; max-width: 50%; }
+
+  /* Modals: less margin on mobile */
+  .modal-dialog:not(.modal-fullscreen) { margin: .4rem auto; }
+  .modal-dialog.modal-lg { max-width: calc(100% - .8rem); }
+
+  /* Shopping list: wider item name */
+  .shop-item-recipes { display: none; }
+
+  /* Planner week-label on mobile: smaller */
+  #week-label { font-size: .78rem; }
+}
+
+@media (min-width: 768px) {
+  .pb-nav { padding-bottom: 1.5rem !important; }
+}

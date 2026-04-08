@@ -192,7 +192,7 @@ function recipeCard(r) {
   const pillsHtml = buildPillsHtml(r);
 
   return `
-    <div class="col-sm-6 col-lg-4 col-xl-3">
+    <div class="col-6 col-sm-6 col-lg-4 col-xl-3">
       <div class="card recipe-card h-100" data-id="${r.id}" data-name="${escHtml(r.name)}">
         <div class="card-body pb-1">
           <div class="d-flex justify-content-between align-items-start mb-1">

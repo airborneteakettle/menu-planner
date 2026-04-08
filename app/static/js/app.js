@@ -27,6 +27,10 @@ function route() {
     a.classList.toggle('active', a.getAttribute('href') === '#' + key)
   );
 
+  document.querySelectorAll('#bottom-nav a').forEach(a =>
+    a.classList.toggle('active', a.getAttribute('href') === '#' + key)
+  );
+
   Object.values(VIEWS).forEach(v =>
     document.getElementById(v.el).classList.add('d-none')
   );

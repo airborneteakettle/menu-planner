@@ -97,6 +97,5 @@ def create_app(config_class=Config):
         from app.models import user       # noqa: F401
         from app.models import household  # noqa: F401
         from app.models import weight     # noqa: F401
-        db.create_all()
 
     return app

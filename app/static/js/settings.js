@@ -19,6 +19,30 @@ export async function renderSettings(el) {
           </div>
         </div>
 
+        <!-- Change password card -->
+        <div class="card mb-4">
+          <div class="card-header bg-white fw-semibold">
+            <i class="bi bi-key me-2 text-success"></i>Change Password
+          </div>
+          <div class="card-body">
+            <div class="mb-3">
+              <label class="form-label small fw-semibold">Current password</label>
+              <input type="password" class="form-control form-control-sm" id="cp-current" autocomplete="current-password">
+            </div>
+            <div class="mb-3">
+              <label class="form-label small fw-semibold">New password</label>
+              <input type="password" class="form-control form-control-sm" id="cp-new" autocomplete="new-password" minlength="8">
+            </div>
+            <div class="mb-3">
+              <label class="form-label small fw-semibold">Confirm new password</label>
+              <input type="password" class="form-control form-control-sm" id="cp-confirm" autocomplete="new-password">
+            </div>
+            <button class="btn btn-success btn-sm" id="btn-change-password">
+              <i class="bi bi-check-lg me-1"></i>Update Password
+            </button>
+          </div>
+        </div>
+
         <!-- Auto-tag card -->
         <div class="card">
           <div class="card-header bg-white fw-semibold">
@@ -43,6 +67,7 @@ export async function renderSettings(el) {
     </div>`;
 
   document.getElementById('btn-run-auto-tag').addEventListener('click', runAutoTag);
+  document.getElementById('btn-change-password').addEventListener('click', changePassword);
   await loadHousehold();
 }
 
@@ -128,6 +153,41 @@ async function removeMember(userId) {
     await api.household.remove(userId);
     await loadHousehold();
   } catch (e) { toast(e.message, 'danger'); }
+}
+
+// ── Change password ───────────────────────────────────────────────────────────
+
+async function changePassword() {
+  const current = document.getElementById('cp-current').value;
+  const newPw   = document.getElementById('cp-new').value;
+  const confirm = document.getElementById('cp-confirm').value;
+
+  if (!current || !newPw || !confirm) {
+    toast('Please fill in all password fields', 'danger');
+    return;
+  }
+  if (newPw.length < 8) {
+    toast('New password must be at least 8 characters', 'danger');
+    return;
+  }
+  if (newPw !== confirm) {
+    toast('New passwords do not match', 'danger');
+    return;
+  }
+
+  const btn = document.getElementById('btn-change-password');
+  btn.disabled = true;
+  try {
+    await api.settings.changePassword(current, newPw);
+    toast('Password updated');
+    document.getElementById('cp-current').value = '';
+    document.getElementById('cp-new').value = '';
+    document.getElementById('cp-confirm').value = '';
+  } catch (e) {
+    toast(e.message, 'danger');
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 // ── Auto-tag ──────────────────────────────────────────────────────────────────

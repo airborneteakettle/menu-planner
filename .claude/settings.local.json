@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"from app import create_app; app = create_app\\(\\); print\\('OK - routes:', [str\\(r\\) for r in app.url_map.iter_rules\\(\\)]\\)\")",
+      "Bash(xargs grep:*)",
+      "Bash(pip install:*)",
+      "Bash(python -c \"import flask_migrate; print\\(flask_migrate.__version__\\)\")",
+      "Bash(python -c \"from flask_migrate import Migrate; print\\('ok'\\)\")",
+      "Bash(python -c ':*)",
+      "Bash(set FLASK_APP=run.py)",
+      "Bash(flask db:*)",
+      "Bash(python -m flask --app run db init)"
+    ]
+  }
+}

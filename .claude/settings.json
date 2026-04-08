@@ -45,7 +45,14 @@
       "Bash(ssh -i ~/.ssh/id_ed25519_linode root@172.237.145.150 \"ls /opt/menu-planner && chown -R deploy:deploy /opt/menu-planner\")",
       "Bash(ssh -i ~/.ssh/id_ed25519_linode root@172.237.145.150 \"cd /opt/menu-planner && python3 -m venv venv && venv/bin/pip install --quiet -r requirements.txt gunicorn && echo 'VENV_OK'\")",
       "Bash(ssh -i ~/.ssh/id_ed25519_linode root@172.237.145.150 \"python3 -c 'import secrets; print\\(secrets.token_hex\\(32\\)\\)'\")",
-      "Bash(ssh -i:*)"
+      "Bash(ssh -i:*)",
+      "Bash(git commit -m ':*)",
+      "Bash(git push:*)",
+      "Bash(git add:*)",
+      "Bash(python -m flask db migrate -m \"add fiber_g to recipe\")",
+      "Bash(python -c \"import inspect; from recipe_scrapers import scrape_me; print\\(inspect.signature\\(scrape_me\\)\\)\")",
+      "Bash(python -c \"import inspect; from recipe_scrapers import scrape_html; print\\(inspect.signature\\(scrape_html\\)\\)\")",
+      "Bash(python3 -c ':*)"
     ],
     "additionalDirectories": [
       "C:\\Users\\jjcha\\.ssh"

@@ -1,7 +1,11 @@
+import logging
 import re
 import requests
+from fractions import Fraction
 from recipe_scrapers import scrape_html
 from app.services.usda import estimate_recipe_nutrition, parse_ingredient
+
+log = logging.getLogger(__name__)
 
 _HEADERS = {
     "User-Agent": (
@@ -16,24 +20,37 @@ _HEADERS = {
 
 def _fetch_html(url: str, browserless_key: str | None = None, scrapingbee_key: str | None = None) -> str:
     """Fetch page HTML directly, falling back to Browserless then ScrapingBee on 403."""
+    log.info("IMPORT direct fetch: %s", url)
     resp = requests.get(url, headers=_HEADERS, timeout=15, allow_redirects=True)
+    log.info("IMPORT direct fetch status: %s", resp.status_code)
+
     if resp.status_code != 403:
         resp.raise_for_status()
+        log.info("IMPORT using direct fetch result")
         return resp.text
+
+    log.warning("IMPORT direct fetch blocked (403) for %s", url)
 
     # First fallback: Browserless.io (JS rendering)
     if browserless_key:
+        log.info("IMPORT trying Browserless.io for %s", url)
         bl_resp = requests.post(
             f"https://production-sfo.browserless.io/content?token={browserless_key}",
             json={"url": url, "waitFor": 2000},
             headers={"Content-Type": "application/json"},
             timeout=30,
         )
+        log.info("IMPORT Browserless.io status: %s", bl_resp.status_code)
         if bl_resp.ok:
+            log.info("IMPORT using Browserless.io result (%d bytes)", len(bl_resp.text))
             return bl_resp.text
+        log.warning("IMPORT Browserless.io failed: %s — %s", bl_resp.status_code, bl_resp.text[:200])
+    else:
+        log.warning("IMPORT no Browserless API key configured — skipping")
 
     # Second fallback: ScrapingBee
     if scrapingbee_key:
+        log.info("IMPORT trying ScrapingBee for %s", url)
         sb_resp = requests.get(
             "https://app.scrapingbee.com/api/v1/",
             params={
@@ -45,13 +62,39 @@ def _fetch_html(url: str, browserless_key: str | None = None, scrapingbee_key: s
             },
             timeout=60,
         )
+        log.info("IMPORT ScrapingBee status: %s", sb_resp.status_code)
         if sb_resp.ok:
+            log.info("IMPORT using ScrapingBee result (%d bytes)", len(sb_resp.text))
             return sb_resp.text
+        log.warning("IMPORT ScrapingBee failed: %s — %s", sb_resp.status_code, sb_resp.text[:200])
+    else:
+        log.warning("IMPORT no ScrapingBee API key configured — skipping")
 
     raise ValueError(
         "This site is protected by Cloudflare and could not be imported. "
         "Try adding the recipe manually instead."
     )
+
+
+_UGLY_FLOAT_RE = re.compile(r'\d*\.\d{4,}')  # 4+ decimal places = scraper artifact
+
+
+def _float_to_frac(f: float) -> str:
+    """Convert a float like 1.3333... to a human-readable string like '1 1/3'."""
+    frac = Fraction(f).limit_denominator(8)
+    whole     = int(frac)
+    remainder = frac - whole
+    if remainder == 0:
+        return str(whole)
+    frac_str = f'{remainder.numerator}/{remainder.denominator}'
+    return f'{whole} {frac_str}' if whole else frac_str
+
+
+def _prettify_quantity(qty: str | None) -> str | None:
+    """Replace ugly floats in a quantity string with cooking-friendly fractions."""
+    if not qty:
+        return qty
+    return _UGLY_FLOAT_RE.sub(lambda m: _float_to_frac(float(m.group())), qty)
 
 
 def _parse_numeric(value: str | None) -> float | None:
@@ -135,7 +178,7 @@ def import_recipe_from_url(url: str, usda_api_key: str, browserless_key: str | N
     parsed_ingredients = []
     for ing in ingredients:
         quantity, food_name = parse_ingredient(ing)
-        parsed_ingredients.append({"name": food_name, "quantity": quantity})
+        parsed_ingredients.append({"name": food_name, "quantity": _prettify_quantity(quantity)})
 
     return {
         "name": name,

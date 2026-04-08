@@ -1,3 +1,4 @@
+import logging
 import click
 from flask import Flask, render_template, redirect, url_for, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
@@ -14,6 +15,7 @@ login_manager = LoginManager()
 def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
+    logging.basicConfig(level=logging.INFO)
 
     db.init_app(app)
     migrate.init_app(app, db)

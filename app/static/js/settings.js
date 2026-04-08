@@ -83,6 +83,13 @@ export async function renderSettings(el) {
           </div>
         </div>
 
+        <!-- Sign out (mobile) -->
+        <div class="d-lg-none mt-2">
+          <a href="/logout" class="btn btn-outline-danger w-100">
+            <i class="bi bi-box-arrow-right me-2"></i>Sign out
+          </a>
+        </div>
+
       </div>
     </div>`;
 

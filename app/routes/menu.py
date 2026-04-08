@@ -76,7 +76,7 @@ def daily_summary():
             totals[k] += (getattr(recipe, k) or 0) * factor
 
     goal      = DietGoal.query.filter_by(user_id=current_user.id)\
-                              .order_by(DietGoal.created_at.desc()).first()
+                              .order_by(DietGoal.id.desc()).first()
     goal_dict = goal.to_dict() if goal else {}
 
     comparison = {}
@@ -130,7 +130,7 @@ def weekly_summary():
     weekly_totals = {k: round(sum(d[k] for d in days), 1) for k in MACROS}
 
     goal = DietGoal.query.filter_by(user_id=current_user.id)\
-                         .order_by(DietGoal.created_at.desc()).first()
+                         .order_by(DietGoal.id.desc()).first()
     weekly_targets = {}
     if goal:
         weekly_targets = {

@@ -9,14 +9,14 @@ bp = Blueprint("goals", __name__)
 @bp.route("/", methods=["GET"])
 def get_goals():
     goals = DietGoal.query.filter_by(user_id=current_user.id)\
-                          .order_by(DietGoal.created_at.desc()).all()
+                          .order_by(DietGoal.id.desc()).all()
     return jsonify([g.to_dict() for g in goals])
 
 
 @bp.route("/current", methods=["GET"])
 def get_current_goal():
     goal = DietGoal.query.filter_by(user_id=current_user.id)\
-                         .order_by(DietGoal.created_at.desc()).first()
+                         .order_by(DietGoal.id.desc()).first()
     if not goal:
         return jsonify({}), 404
     return jsonify(goal.to_dict())

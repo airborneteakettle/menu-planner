@@ -15,6 +15,16 @@ NUTRIENT_IDS = {
     "fiber_g":   1079,  # Fiber, total dietary
 }
 
+# USDA nutrientNumber strings (used by Foundation foods in search snippets)
+# instead of the integer nutrientId used by SR Legacy.
+NUTRIENT_NUMBERS = {
+    "calories":  "208",
+    "protein_g": "203",
+    "fat_g":     "204",
+    "carbs_g":   "205",
+    "fiber_g":   "291",
+}
+
 # Strips leading quantities/units so "2 cups diced chicken breast" → "chicken breast"
 _QUANTITY_RE = re.compile(
     r"^[\d\s./½¼¾⅓⅔⅛]+"
@@ -159,12 +169,19 @@ def parse_ingredient(ingredient_str: str) -> tuple[str | None, str]:
 
 
 def _parse_nutrients(food_nutrients: list) -> dict:
-    id_map = {v: k for k, v in NUTRIENT_IDS.items()}
-    result = {k: 0.0 for k in NUTRIENT_IDS}
+    id_map  = {v: k for k, v in NUTRIENT_IDS.items()}
+    num_map = {v: k for k, v in NUTRIENT_NUMBERS.items()}
+    result  = {k: 0.0 for k in NUTRIENT_IDS}
     for n in food_nutrients:
+        # SR Legacy / branded: integer nutrientId at top level or nested under "nutrient"
         nid = n.get("nutrientId") or (n.get("nutrient") or {}).get("id")
         if nid in id_map:
             result[id_map[nid]] = float(n.get("value") or 0)
+            continue
+        # Foundation foods in search snippets: string nutrientNumber field
+        num = str(n.get("nutrientNumber") or (n.get("nutrient") or {}).get("number") or "")
+        if num in num_map:
+            result[num_map[num]] = float(n.get("value") or 0)
     return result
 
 
@@ -343,8 +360,12 @@ def lookup_ingredient_nutrition(ingredient: str, api_key: str) -> dict | None:
         _DT_RANK = {'Foundation': 0, 'SR Legacy': 1}
         def _has_calories(f):
             return any(
-                float(n.get("value") or 0) > 0 and
-                (n.get("nutrientId") == 1008 or (n.get("nutrient") or {}).get("id") == 1008)
+                float(n.get("value") or 0) > 0 and (
+                    n.get("nutrientId") == 1008 or
+                    (n.get("nutrient") or {}).get("id") == 1008 or
+                    str(n.get("nutrientNumber") or
+                        (n.get("nutrient") or {}).get("number") or "") == "208"
+                )
                 for n in f.get("foodNutrients", [])
             )
         food = min(foods, key=lambda f: (

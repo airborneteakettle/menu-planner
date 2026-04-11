@@ -5,6 +5,9 @@ let _el           = null;
 let _allRecipes   = [];
 let _activeTags   = new Set();
 let _activeRating = 0;
+let _sortField    = '';   // '' | 'calories' | 'protein_g' | 'carbs_g' | 'fat_g'
+let _sortDir      = 'asc';
+let _nutFilter    = { field: '', min: '', max: '' };
 let _editMode         = false;
 let _editingRecipeId  = null;
 
@@ -33,6 +36,37 @@ export async function renderRecipes(el) {
         <i class="bi bi-link-45deg me-1"></i>Import Recipe
       </button>
     </div>
+
+    <!-- Nutrition sort + filter row -->
+    <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+      <span class="text-muted small">Sort:</span>
+      <select class="form-select form-select-sm" id="sort-nutrition" style="width:160px">
+        <option value="">Default</option>
+        <option value="calories-asc">Calories ↑</option>
+        <option value="calories-desc">Calories ↓</option>
+        <option value="protein_g-desc">Protein ↓</option>
+        <option value="protein_g-asc">Protein ↑</option>
+        <option value="carbs_g-asc">Carbs ↑</option>
+        <option value="carbs_g-desc">Carbs ↓</option>
+        <option value="fat_g-asc">Fat ↑</option>
+        <option value="fat_g-desc">Fat ↓</option>
+      </select>
+
+      <span class="text-muted small ms-2">Filter:</span>
+      <select class="form-select form-select-sm" id="nut-filter-field" style="width:120px">
+        <option value="">Any macro</option>
+        <option value="calories">Calories</option>
+        <option value="protein_g">Protein</option>
+        <option value="carbs_g">Carbs</option>
+        <option value="fat_g">Fat</option>
+      </select>
+      <input type="number" class="form-control form-control-sm" id="nut-filter-min"
+             placeholder="Min" style="width:72px" min="0">
+      <span class="text-muted small">–</span>
+      <input type="number" class="form-control form-control-sm" id="nut-filter-max"
+             placeholder="Max" style="width:72px" min="0">
+    </div>
+
     <div id="tag-cloud" class="mb-3 d-flex flex-wrap gap-1 align-items-center">
       <span class="text-muted small me-1">Tags:</span>
     </div>
@@ -46,6 +80,22 @@ export async function renderRecipes(el) {
     _activeRating = +e.target.value;
     applyFilters();
   });
+  document.getElementById('sort-nutrition').addEventListener('change', e => {
+    const [field, dir] = e.target.value ? e.target.value.split('-') : ['', 'asc'];
+    _sortField = field;
+    _sortDir   = dir;
+    applyFilters();
+  });
+  ['nut-filter-field', 'nut-filter-min', 'nut-filter-max'].forEach(id =>
+    document.getElementById(id).addEventListener('input', () => {
+      _nutFilter = {
+        field: document.getElementById('nut-filter-field').value,
+        min:   document.getElementById('nut-filter-min').value,
+        max:   document.getElementById('nut-filter-max').value,
+      };
+      applyFilters();
+    })
+  );
 
   setupImportModal();
   setupManualAddModal();
@@ -94,17 +144,35 @@ function toggleTagFilter(pill) {
 }
 
 function applyFilters() {
-  const query    = (document.getElementById('search-recipes')?.value || '').toLowerCase();
-  const mealFil  = document.getElementById('filter-meal-type')?.value || '';
+  const query     = (document.getElementById('search-recipes')?.value || '').toLowerCase();
+  const mealFil   = document.getElementById('filter-meal-type')?.value || '';
   const minRating = _activeRating;
 
-  const filtered = _allRecipes.filter(r => {
-    if (query    && !r.name.toLowerCase().includes(query)) return false;
-    if (mealFil  && r.meal_type !== mealFil && !r.tags.includes(mealFil)) return false;
+  let filtered = _allRecipes.filter(r => {
+    if (query     && !r.name.toLowerCase().includes(query)) return false;
+    if (mealFil   && r.meal_type !== mealFil && !r.tags.includes(mealFil)) return false;
     if (minRating && (r.rating || 0) < minRating) return false;
     if (_activeTags.size && !r.tags.some(t => _activeTags.has(t))) return false;
+
+    // Nutrition range filter
+    if (_nutFilter.field) {
+      const val = r[_nutFilter.field] ?? null;
+      if (val === null) return false;          // exclude recipes with no data for this macro
+      if (_nutFilter.min !== '' && val < +_nutFilter.min) return false;
+      if (_nutFilter.max !== '' && val > +_nutFilter.max) return false;
+    }
+
     return true;
   });
+
+  // Nutrition sort
+  if (_sortField) {
+    filtered = [...filtered].sort((a, b) => {
+      const av = a[_sortField] ?? -Infinity;
+      const bv = b[_sortField] ?? -Infinity;
+      return _sortDir === 'asc' ? av - bv : bv - av;
+    });
+  }
 
   renderGrid(filtered);
 }

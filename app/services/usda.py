@@ -1,5 +1,8 @@
+import logging
 import re
 import requests
+
+log = logging.getLogger(__name__)
 
 USDA_BASE = "https://api.nal.usda.gov/fdc/v1"
 
@@ -202,16 +205,24 @@ def _fetch_portion_grams(fdc_id: int, amount: float, unit: str, api_key: str) ->
     """
     target = _UNIT_TO_USDA.get(unit)
     if not target:
+        log.debug("USDA_PORTION_SKIP: unit=%r not in _UNIT_TO_USDA — no portion lookup", unit)
         return None
+    log.info("USDA_PORTION_FETCH: fdcId=%d amount=%s unit=%r target=%r", fdc_id, amount, unit, target)
     try:
         resp = requests.get(
             f"{USDA_BASE}/food/{fdc_id}",
             params={"api_key": api_key},
             timeout=10,
         )
+        log.info("USDA_PORTION_STATUS: fdcId=%d status=%s", fdc_id, resp.status_code)
         if not resp.ok:
+            log.warning("USDA_PORTION_ERROR: fdcId=%d status=%s", fdc_id, resp.status_code)
             return None
         portions = resp.json().get("foodPortions", [])
+        log.info("USDA_PORTION_COUNT: fdcId=%d portions=%d available=%s",
+                 fdc_id, len(portions),
+                 [(p.get("amount"), (p.get("measureUnit") or {}).get("name"), p.get("gramWeight"))
+                  for p in portions])
         for p in portions:
             mu   = p.get("measureUnit") or {}
             name = (mu.get("name") or "").lower().strip()
@@ -219,9 +230,13 @@ def _fetch_portion_grams(fdc_id: int, amount: float, unit: str, api_key: str) ->
             gram_weight = float(p.get("gramWeight") or 0)
             p_amount    = float(p.get("amount")     or 1)
             if target in (name, abbr) and gram_weight > 0:
-                return gram_weight * amount / p_amount
-    except Exception:
-        pass
+                result = gram_weight * amount / p_amount
+                log.info("USDA_PORTION_MATCH: unit=%r p_amount=%s gramWeight=%s → %.1fg",
+                         target, p_amount, gram_weight, result)
+                return result
+        log.warning("USDA_PORTION_NO_MATCH: fdcId=%d target=%r not found in portions", fdc_id, target)
+    except Exception as e:
+        log.exception("USDA_PORTION_EXCEPTION: fdcId=%d error=%s", fdc_id, e)
     return None
 
 
@@ -250,17 +265,23 @@ def lookup_ingredient_nutrition(ingredient: str, api_key: str) -> dict | None:
     - Uses the food's own serving size when the quantity is a bare count (e.g. "1 apple").
     - Falls back to per-100 g when no quantity or unit is recognised.
     """
+    log.info("USDA_LOOKUP: ingredient=%r", ingredient)
+
     # Seasonings / garnishes added "to taste" or with no measured quantity
     if re.search(r"\bto\s+taste\b|\bas\s+needed\b", ingredient, re.IGNORECASE):
+        log.info("USDA_SKIP_TO_TASTE: %r", ingredient)
         return None
 
     quantity_str_check, _ = parse_ingredient(ingredient)
     if quantity_str_check is None and re.search(
         r"\b(salt|pepper|seasoning|spice|flakes)\b", ingredient, re.IGNORECASE
     ):
+        log.info("USDA_SKIP_SEASONING: %r (no quantity)", ingredient)
         return None
 
     quantity_str, food_name = parse_ingredient(ingredient)
+    log.info("USDA_PARSED: quantity=%r food_name=%r", quantity_str, food_name)
+
     try:
         resp = requests.get(
             f"{USDA_BASE}/foods/search",
@@ -275,6 +296,7 @@ def lookup_ingredient_nutrition(ingredient: str, api_key: str) -> dict | None:
         resp.raise_for_status()
         foods = resp.json().get("foods", [])
         if not foods:
+            log.warning("USDA_NO_RESULTS: food_name=%r", food_name)
             return None
         # Prefer the first result that has non-zero calories
         def _has_calories(f):
@@ -285,10 +307,14 @@ def lookup_ingredient_nutrition(ingredient: str, api_key: str) -> dict | None:
             )
         food = next((f for f in foods if _has_calories(f)), foods[0])
         per_100g = _parse_nutrients(food.get("foodNutrients", []))
-    except requests.RequestException:
+        log.info("USDA_FOOD_MATCH: fdcId=%s description=%r per100g_cal=%.1f",
+                 food.get("fdcId"), food.get("description"), per_100g.get("calories", 0))
+    except requests.RequestException as e:
+        log.error("USDA_REQUEST_ERROR: food_name=%r error=%s", food_name, e)
         return None
 
     grams = quantity_to_grams(quantity_str)
+    log.info("USDA_QTY_TO_GRAMS: quantity_str=%r → grams=%s (water-density)", quantity_str, grams)
 
     # For non-liquid volume units (cup, tbsp, tsp), water density is wrong for
     # dry ingredients. Use the USDA food's own portion data when available.
@@ -296,10 +322,16 @@ def lookup_ingredient_nutrition(ingredient: str, api_key: str) -> dict | None:
         parts = _parse_qty_parts(quantity_str)
         if parts:
             qty_amount, qty_unit = parts
+            log.info("USDA_QTY_PARTS: amount=%s unit=%r", qty_amount, qty_unit)
             if qty_unit in _UNIT_TO_USDA and qty_unit not in _LIQUID_UNITS:
                 portion_g = _fetch_portion_grams(food["fdcId"], qty_amount, qty_unit, api_key)
                 if portion_g is not None:
+                    log.info("USDA_PORTION_OVERRIDE: %.1fg (was %.1fg water-density)", portion_g, grams)
                     grams = portion_g
+                else:
+                    log.warning("USDA_PORTION_FALLBACK: no portion data found, using water-density %.1fg", grams)
+            else:
+                log.info("USDA_QTY_UNIT_SKIP: unit=%r — not a volume unit or is liquid, keeping %.1fg", qty_unit, grams)
 
     # Bare-count fallback: "1 apple", "2 shallots" — use the food's own serving size
     # rather than the 100 g default so whole items aren't wildly over-estimated.
@@ -309,11 +341,16 @@ def lookup_ingredient_nutrition(ingredient: str, api_key: str) -> dict | None:
             serving_g = _usda_serving_grams(food)
             if serving_g:
                 grams = _parse_amount(bare.group(1)) * serving_g
+                log.info("USDA_SERVING_SIZE: bare count × usda_serving=%.1fg → %.1fg", serving_g, grams)
 
     if grams is not None:
         scale = grams / 100.0
-        return {k: v * scale for k, v in per_100g.items()}
-    # No quantity at all → return per-100 g as a rough estimate
+        result = {k: v * scale for k, v in per_100g.items()}
+        log.info("USDA_RESULT: grams=%.1f scale=%.3f cal=%.1f protein=%.1f carbs=%.1f fat=%.1f",
+                 grams, scale, result["calories"], result["protein_g"], result["carbs_g"], result["fat_g"])
+        return result
+
+    log.info("USDA_RESULT_PER100G: no quantity, returning per-100g cal=%.1f", per_100g.get("calories", 0))
     return per_100g
 
 

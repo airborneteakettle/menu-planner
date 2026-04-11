@@ -1,4 +1,5 @@
 import logging
+import subprocess
 import click
 from flask import Flask, render_template, redirect, url_for, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
@@ -49,10 +50,31 @@ def create_app(config_class=Config):
     app.register_blueprint(household_bp, url_prefix="/api/household")
     app.register_blueprint(weight_bp,    url_prefix="/api/weight")
 
+    # ── Cache-busting version string (current git commit hash) ───────────────
+    try:
+        _version = subprocess.check_output(
+            ['git', 'rev-parse', '--short', 'HEAD'],
+            cwd=app.root_path, stderr=subprocess.DEVNULL
+        ).decode().strip()
+    except Exception:
+        _version = '0'
+    app.config['STATIC_VERSION'] = _version
+
+    @app.context_processor
+    def inject_static_version():
+        return {'static_version': app.config['STATIC_VERSION']}
+
     # ── Main SPA route ────────────────────────────────────────────────────────
     @app.route("/")
     def index():
         return render_template("index.html")
+
+    # ── No-cache for JS/CSS so deploys take effect without a manual cache clear
+    @app.after_request
+    def set_static_cache_headers(response):
+        if request.path.startswith('/static/js/') or request.path.startswith('/static/css/'):
+            response.headers['Cache-Control'] = 'no-cache, must-revalidate'
+        return response
 
     # ── Global auth gate ──────────────────────────────────────────────────────
     OPEN_ENDPOINTS = {'auth.login', 'auth.logout',

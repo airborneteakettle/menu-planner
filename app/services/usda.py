@@ -6,10 +6,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 log = logging.getLogger(__name__)
 
-# Module-level cache: food_name → (foundation_foods, sr_foods)
-# Avoids re-hitting USDA for the same ingredient across recipes or re-checks.
-_search_cache: dict[str, list] = {}
-_search_cache_lock = threading.Lock()
+# Module-level caches to avoid redundant USDA HTTP calls across requests.
+_search_cache: dict[str, list] = {}       # food_name  → foods list
+_portion_cache: dict[int, list] = {}      # fdcId      → foodPortions list
+_cache_lock = threading.Lock()
 
 USDA_BASE = "https://api.nal.usda.gov/fdc/v1"
 
@@ -243,16 +243,26 @@ def _fetch_portion_grams(fdc_id: int, amount: float, unit: str, api_key: str, fo
     log.info("USDA_PORTION_FETCH: fdcId=%d amount=%s unit=%r target=%r food_name=%r",
              fdc_id, amount, unit, target, food_name)
     try:
-        resp = requests.get(
-            f"{USDA_BASE}/food/{fdc_id}",
-            params={"api_key": api_key},
-            timeout=10,
-        )
-        log.info("USDA_PORTION_STATUS: fdcId=%d status=%s", fdc_id, resp.status_code)
-        if not resp.ok:
-            log.warning("USDA_PORTION_ERROR: fdcId=%d status=%s", fdc_id, resp.status_code)
-            return None
-        portions = resp.json().get("foodPortions", [])
+        with _cache_lock:
+            portions = _portion_cache.get(fdc_id)
+
+        if portions is None:
+            resp = requests.get(
+                f"{USDA_BASE}/food/{fdc_id}",
+                params={"api_key": api_key},
+                timeout=8,
+            )
+            log.info("USDA_PORTION_STATUS: fdcId=%d status=%s", fdc_id, resp.status_code)
+            if not resp.ok:
+                log.warning("USDA_PORTION_ERROR: fdcId=%d status=%s", fdc_id, resp.status_code)
+                with _cache_lock:
+                    _portion_cache[fdc_id] = []  # cache the miss too
+                return None
+            portions = resp.json().get("foodPortions", [])
+            with _cache_lock:
+                _portion_cache[fdc_id] = portions
+        else:
+            log.info("USDA_PORTION_CACHE_HIT: fdcId=%d portions=%d", fdc_id, len(portions))
         log.info("USDA_PORTION_COUNT: fdcId=%d portions=%d available=%s",
                  fdc_id, len(portions),
                  [(p.get("amount"),
@@ -346,7 +356,7 @@ def lookup_ingredient_nutrition(ingredient: str, api_key: str) -> dict | None:
 
     try:
         # Search with cache — same food_name won't hit USDA twice in a session.
-        with _search_cache_lock:
+        with _cache_lock:
             cached = _search_cache.get(food_name)
 
         if cached is not None:
@@ -375,7 +385,7 @@ def lookup_ingredient_nutrition(ingredient: str, api_key: str) -> dict | None:
             sr_foods         = _search("SR Legacy") if remaining > 0 else []
             foods            = foundation_foods + sr_foods[:remaining]
 
-            with _search_cache_lock:
+            with _cache_lock:
                 _search_cache[food_name] = foods
         log.info("USDA_SEARCH_RESULTS: food_name=%r count=%d ids=%s",
                  food_name, len(foods),
@@ -441,7 +451,7 @@ def lookup_ingredient_nutrition(ingredient: str, api_key: str) -> dict | None:
             log.info("USDA_QTY_PARTS: amount=%s unit=%r", qty_amount, qty_unit)
             if qty_unit in _UNIT_TO_USDA and qty_unit not in _LIQUID_UNITS:
                 portion_g = None
-                for candidate_food in foods:
+                for candidate_food in foods[:3]:
                     portion_g = _fetch_portion_grams(
                         candidate_food["fdcId"], qty_amount, qty_unit, api_key, food_name)
                     if portion_g is not None:

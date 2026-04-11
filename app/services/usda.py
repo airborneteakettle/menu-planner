@@ -339,15 +339,14 @@ def lookup_ingredient_nutrition(ingredient: str, api_key: str) -> dict | None:
     log.info("USDA_PARSED: quantity=%r food_name=%r", quantity_str, food_name)
 
     try:
-        # Query Foundation and SR Legacy in parallel so Foundation foods are
-        # guaranteed to appear — a combined query returns mostly SR Legacy
-        # results because SR Legacy has far more entries.
-        def _search(data_type: str) -> list:
+        # Fill up to 10 from Foundation first; supplement with SR Legacy only
+        # if Foundation has fewer than 10 results.
+        def _search(data_type: str, page_size: int) -> list:
             r = requests.get(
                 f"{USDA_BASE}/foods/search",
                 params=[
                     ("query",    food_name),
-                    ("pageSize", 5),
+                    ("pageSize", page_size),
                     ("api_key",  api_key),
                     ("dataType", data_type),
                 ],
@@ -356,10 +355,10 @@ def lookup_ingredient_nutrition(ingredient: str, api_key: str) -> dict | None:
             r.raise_for_status()
             return r.json().get("foods", [])
 
-        with ThreadPoolExecutor(max_workers=2) as _pool:
-            f_future  = _pool.submit(_search, "Foundation")
-            sr_future = _pool.submit(_search, "SR Legacy")
-            foods = f_future.result() + sr_future.result()
+        foundation_foods = _search("Foundation", 10)
+        remaining = 10 - len(foundation_foods)
+        sr_foods  = _search("SR Legacy", remaining) if remaining > 0 else []
+        foods     = foundation_foods + sr_foods
         log.info("USDA_SEARCH_RESULTS: food_name=%r count=%d ids=%s",
                  food_name, len(foods),
                  [(f.get("fdcId"), f.get("dataType"), f.get("description")) for f in foods])

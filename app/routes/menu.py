@@ -264,8 +264,10 @@ def unshare_entry(entry_id, uid):
 
 @bp.route("/custom-items", methods=["GET"])
 def list_custom_items():
-    items = CustomShoppingItem.query.filter_by(user_id=current_user.id)\
-                                    .order_by(CustomShoppingItem.created_at).all()
+    member_ids = _household_user_ids()
+    items = CustomShoppingItem.query\
+        .filter(CustomShoppingItem.user_id.in_(member_ids))\
+        .order_by(CustomShoppingItem.created_at).all()
     return jsonify([i.to_dict() for i in items])
 
 
@@ -286,22 +288,30 @@ def add_custom_item():
 
 @bp.route("/custom-items/<int:item_id>", methods=["DELETE"])
 def delete_custom_item(item_id):
-    item = CustomShoppingItem.query.filter_by(id=item_id, user_id=current_user.id)\
-                                   .first_or_404()
+    member_ids = _household_user_ids()
+    item = CustomShoppingItem.query.filter(
+        CustomShoppingItem.id == item_id,
+        CustomShoppingItem.user_id.in_(member_ids),
+    ).first_or_404()
     db.session.delete(item)
     db.session.commit()
     return "", 204
 
 
 # ── Shopping checkmarks ────────────────────────────────────────────────────────
+# Checkmarks are household-scoped: any member checking an item marks it for
+# everyone; any member unchecking it (or clearing) removes it for everyone.
 
 @bp.route("/shopping-checked", methods=["GET"])
 def get_shopping_checked():
     week_start = request.args.get("week_start", "")
-    rows = ShoppingCheckedItem.query.filter_by(
-        user_id=current_user.id, week_start=week_start
+    member_ids = _household_user_ids()
+    rows = ShoppingCheckedItem.query.filter(
+        ShoppingCheckedItem.user_id.in_(member_ids),
+        ShoppingCheckedItem.week_start == week_start,
     ).all()
-    return jsonify([r.item_key for r in rows])
+    # Return deduplicated keys — any member's check counts for all
+    return jsonify(list({r.item_key for r in rows}))
 
 
 @bp.route("/shopping-checked", methods=["POST"])
@@ -313,17 +323,25 @@ def set_shopping_checked():
     if not item_key:
         return jsonify({"error": "item_key required"}), 400
 
-    row = ShoppingCheckedItem.query.filter_by(
-        user_id=current_user.id, week_start=week_start, item_key=item_key
-    ).first()
+    member_ids = _household_user_ids()
     if checked:
-        if not row:
+        # Only insert if no household member already has this checked
+        existing = ShoppingCheckedItem.query.filter(
+            ShoppingCheckedItem.user_id.in_(member_ids),
+            ShoppingCheckedItem.week_start == week_start,
+            ShoppingCheckedItem.item_key == item_key,
+        ).first()
+        if not existing:
             db.session.add(ShoppingCheckedItem(
                 user_id=current_user.id, week_start=week_start, item_key=item_key
             ))
     else:
-        if row:
-            db.session.delete(row)
+        # Uncheck for ALL household members so everyone sees it unchecked
+        ShoppingCheckedItem.query.filter(
+            ShoppingCheckedItem.user_id.in_(member_ids),
+            ShoppingCheckedItem.week_start == week_start,
+            ShoppingCheckedItem.item_key == item_key,
+        ).delete(synchronize_session=False)
     db.session.commit()
     return "", 204
 
@@ -331,8 +349,10 @@ def set_shopping_checked():
 @bp.route("/shopping-checked", methods=["DELETE"])
 def clear_shopping_checked():
     week_start = request.args.get("week_start", "")
-    ShoppingCheckedItem.query.filter_by(
-        user_id=current_user.id, week_start=week_start
-    ).delete()
+    member_ids = _household_user_ids()
+    ShoppingCheckedItem.query.filter(
+        ShoppingCheckedItem.user_id.in_(member_ids),
+        ShoppingCheckedItem.week_start == week_start,
+    ).delete(synchronize_session=False)
     db.session.commit()
     return "", 204

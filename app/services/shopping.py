@@ -285,4 +285,4 @@ def generate_shopping_list(menu_entries) -> dict:
     for items in grouped.values():
         items.sort(key=lambda x: x["name"].lower())
 
-    return {cat: grouped[cat] for cat in category_order if cat in grouped}
+    return {cat: grouped.get(cat, []) for cat in category_order}

@@ -186,26 +186,28 @@ function renderList(body, data, custom = []) {
     (customByCat[cat] = customByCat[cat] || []).push(item);
   }
 
-  // Recipe categories (preserve server order)
-  const recipeCats = Object.keys(data.list || {});
-  _categories = recipeCats; // expose for modal dropdown
+  // All known categories (server always returns all, even if empty)
+  const allCats = Object.keys(data.list || {});
+  _categories = allCats.filter(c => c !== 'Miscellaneous'); // expose for modal dropdown
 
   const sections = [];
 
-  // Recipe categories + their custom items merged in
-  for (const cat of recipeCats) {
-    sections.push(categorySection(cat, data.list[cat], customByCat[cat] || []));
+  // All recipe categories (always shown) + any matching custom items
+  for (const cat of allCats) {
+    sections.push(categorySection(cat, data.list[cat] || [], customByCat[cat] || []));
   }
 
-  // Custom-item-only categories (not Miscellaneous, not already in recipe cats)
+  // Custom-item-only categories not already covered (not Miscellaneous)
   for (const cat of Object.keys(customByCat)) {
-    if (cat !== 'Miscellaneous' && !recipeCats.includes(cat)) {
+    if (cat !== 'Miscellaneous' && !allCats.includes(cat)) {
       sections.push(categorySection(cat, [], customByCat[cat]));
     }
   }
 
-  // Miscellaneous always last
-  sections.push(categorySection('Miscellaneous', [], customByCat['Miscellaneous'] || []));
+  // Miscellaneous always last (only if not already in allCats)
+  if (!allCats.includes('Miscellaneous')) {
+    sections.push(categorySection('Miscellaneous', [], customByCat['Miscellaneous'] || []));
+  }
 
   const noMeals = recipeCats.length === 0
     ? `<p class="text-muted small fst-italic mb-3">No meals planned — <a href="#planner">open the planner</a> to build your menu.</p>`

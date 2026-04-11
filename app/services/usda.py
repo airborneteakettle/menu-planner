@@ -339,14 +339,14 @@ def lookup_ingredient_nutrition(ingredient: str, api_key: str) -> dict | None:
     log.info("USDA_PARSED: quantity=%r food_name=%r", quantity_str, food_name)
 
     try:
-        # Fill up to 10 from Foundation first; supplement with SR Legacy only
-        # if Foundation has fewer than 10 results.
-        def _search(data_type: str, page_size: int) -> list:
+        # Query Foundation and SR Legacy in parallel; Foundation results go first.
+        # SR Legacy results are only used to fill slots Foundation didn't cover.
+        def _search(data_type: str) -> list:
             r = requests.get(
                 f"{USDA_BASE}/foods/search",
                 params=[
                     ("query",    food_name),
-                    ("pageSize", page_size),
+                    ("pageSize", 10),
                     ("api_key",  api_key),
                     ("dataType", data_type),
                 ],
@@ -355,10 +355,15 @@ def lookup_ingredient_nutrition(ingredient: str, api_key: str) -> dict | None:
             r.raise_for_status()
             return r.json().get("foods", [])
 
-        foundation_foods = _search("Foundation", 10)
-        remaining = 10 - len(foundation_foods)
-        sr_foods  = _search("SR Legacy", remaining) if remaining > 0 else []
-        foods     = foundation_foods + sr_foods
+        with ThreadPoolExecutor(max_workers=2) as _pool:
+            f_future  = _pool.submit(_search, "Foundation")
+            sr_future = _pool.submit(_search, "SR Legacy")
+            foundation_foods = f_future.result()
+            sr_foods         = sr_future.result()
+
+        # Foundation fills first; SR Legacy only pads remaining slots
+        remaining = max(0, 10 - len(foundation_foods))
+        foods = foundation_foods + sr_foods[:remaining]
         log.info("USDA_SEARCH_RESULTS: food_name=%r count=%d ids=%s",
                  food_name, len(foods),
                  [(f.get("fdcId"), f.get("dataType"), f.get("description")) for f in foods])

@@ -4,7 +4,7 @@ from flask_login import current_user
 from app import db
 from app.models.recipe import Recipe, Ingredient, Tag, RecipeRating
 from app.models.goals import DietGoal
-from app.services.recipe_importer import import_recipe_from_url
+from app.services.recipe_importer import import_recipe_from_url, title_from_url
 from app.services.auto_tags import apply_auto_tags
 from app.services.usda import estimate_recipe_nutrition, lookup_ingredient_nutrition, parse_ingredient
 
@@ -142,12 +142,32 @@ def import_recipe():
     api_key          = current_app.config.get("USDA_API_KEY", "DEMO_KEY")
     browserless_key  = current_app.config.get("BROWSERLESS_API_KEY")
     scrapingbee_key  = current_app.config.get("SCRAPINGBEE_API_KEY")
+    fallback_name    = (data.get("fallback_name") or "").strip()
     log.info("RECIPE_IMPORT_START: user=%s url=%s", current_user.username, url)
     try:
         scraped = import_recipe_from_url(url, api_key, browserless_key, scrapingbee_key)
     except Exception as e:
         log.error("RECIPE_IMPORT_FAILED: user=%s url=%s error=%s", current_user.username, url, e)
-        return jsonify({"error": f"Failed to scrape recipe: {e}"}), 422
+
+        if not fallback_name:
+            # Ask the frontend to prompt for a name
+            return jsonify({
+                "error": str(e),
+                "_scrape_failed": True,
+                "suggested_name": title_from_url(url),
+            }), 422
+
+        # Create (or return existing) stub recipe with just the link
+        existing = Recipe.query.filter_by(source_url=url).first()
+        if existing:
+            result = _attach_goal_comparison(existing.to_dict())
+            result["_updated"] = True
+            return jsonify(result), 200
+        stub = Recipe(name=fallback_name, source_url=url, servings=1)
+        db.session.add(stub)
+        db.session.commit()
+        log.info("RECIPE_IMPORT_STUB: user=%s recipe_id=%d name=%r", current_user.username, stub.id, stub.name)
+        return jsonify(_attach_goal_comparison(stub.to_dict())), 201
 
     source_url = scraped.get("source_url")
     existing   = Recipe.query.filter_by(source_url=source_url).first() if source_url else None

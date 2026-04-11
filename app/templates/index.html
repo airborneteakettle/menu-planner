@@ -171,10 +171,18 @@
         <input type="url" class="form-control" id="import-url"
                placeholder="https://www.allrecipes.com/recipe/...">
         <div class="form-text">Supports AllRecipes, NYT Cooking, Serious Eats, and 300+ other sites.</div>
-        <div id="import-error" class="alert alert-danger mt-3 d-none"></div>
+        <div id="import-error" class="alert alert-warning mt-3 d-none"></div>
+        <div id="import-fallback" class="d-none mt-3">
+          <p class="text-muted small mb-2">Save a placeholder with a link so you can fill in the details later.</p>
+          <label class="form-label fw-medium small" for="import-fallback-name">Recipe name</label>
+          <input type="text" class="form-control" id="import-fallback-name" placeholder="e.g. Chicken Tikka Masala">
+        </div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-outline-success d-none" id="btn-import-save-stub">
+          <i class="bi bi-bookmark me-1"></i>Save Placeholder
+        </button>
         <button class="btn btn-success" id="btn-import-submit">
           <span class="spinner-border spinner-border-sm d-none me-1" id="import-spinner"></span>
           Import

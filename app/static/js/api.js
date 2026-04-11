@@ -11,7 +11,9 @@ async function req(path, options = {}) {
   }
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    throw new Error(data.error || `HTTP ${res.status}`);
+    const err = new Error(data.error || `HTTP ${res.status}`);
+    err.data = data;
+    throw err;
   }
   return res.status === 204 ? null : res.json();
 }
@@ -20,7 +22,7 @@ export const api = {
   recipes: {
     list:      (p = {})       => req('/recipes/?' + new URLSearchParams(p)),
     get:       (id)           => req(`/recipes/${id}`),
-    import:    (url)          => req('/recipes/import', { method: 'POST', body: JSON.stringify({ url }) }),
+    import:    (url, fallbackName) => req('/recipes/import', { method: 'POST', body: JSON.stringify({ url, fallback_name: fallbackName || undefined }) }),
     estimateNutrition: (ings) => req('/recipes/estimate-nutrition', { method: 'POST', body: JSON.stringify({ ingredients: ings }) }),
     create:    (data)         => req('/recipes/', { method: 'POST', body: JSON.stringify(data) }),
     update:    (id, data)     => req(`/recipes/${id}`, { method: 'PUT', body: JSON.stringify(data) }),

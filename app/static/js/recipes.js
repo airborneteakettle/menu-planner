@@ -572,6 +572,19 @@ function setupImportModal() {
   document.getElementById('import-url').addEventListener('keydown', e => {
     if (e.key === 'Enter') handleImport();
   });
+  document.getElementById('btn-import-save-stub').addEventListener('click', handleImportStub);
+  document.getElementById('import-fallback-name').addEventListener('keydown', e => {
+    if (e.key === 'Enter') handleImportStub();
+  });
+  // Reset fallback UI when modal is closed
+  document.getElementById('modal-import').addEventListener('hidden.bs.modal', resetImportModal);
+}
+
+function resetImportModal() {
+  document.getElementById('import-error').classList.add('d-none');
+  document.getElementById('import-fallback').classList.add('d-none');
+  document.getElementById('btn-import-save-stub').classList.add('d-none');
+  document.getElementById('btn-import-submit').classList.remove('d-none');
 }
 
 async function handleImport() {
@@ -583,6 +596,8 @@ async function handleImport() {
   if (!url) { errEl.textContent = 'Please enter a URL.'; errEl.classList.remove('d-none'); return; }
 
   errEl.classList.add('d-none');
+  document.getElementById('import-fallback').classList.add('d-none');
+  document.getElementById('btn-import-save-stub').classList.add('d-none');
   spinner.classList.remove('d-none');
   btn.disabled = true;
 
@@ -593,11 +608,43 @@ async function handleImport() {
     await loadRecipes();
     openRecipeModal(recipe.id);
   } catch (e) {
-    errEl.textContent = e.message;
-    errEl.classList.remove('d-none');
+    if (e.data?._scrape_failed) {
+      errEl.textContent = 'Could not scrape this page. Save a placeholder instead?';
+      errEl.classList.remove('d-none');
+      const nameInput = document.getElementById('import-fallback-name');
+      nameInput.value = e.data.suggested_name || '';
+      document.getElementById('import-fallback').classList.remove('d-none');
+      document.getElementById('btn-import-save-stub').classList.remove('d-none');
+      setTimeout(() => nameInput.focus(), 50);
+    } else {
+      errEl.textContent = e.message;
+      errEl.classList.remove('d-none');
+    }
   } finally {
     spinner.classList.add('d-none');
     btn.disabled = false;
+  }
+}
+
+async function handleImportStub() {
+  const url          = document.getElementById('import-url').value.trim();
+  const nameInput    = document.getElementById('import-fallback-name');
+  const name         = nameInput.value.trim();
+  const stubBtn      = document.getElementById('btn-import-save-stub');
+  if (!name) { nameInput.focus(); return; }
+
+  stubBtn.disabled = true;
+  try {
+    const recipe = await api.recipes.import(url, name);
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('modal-import')).hide();
+    toast(`"${recipe.name}" saved as placeholder`);
+    await loadRecipes();
+    openRecipeModal(recipe.id);
+  } catch (e) {
+    document.getElementById('import-error').textContent = e.message;
+    document.getElementById('import-error').classList.remove('d-none');
+  } finally {
+    stubBtn.disabled = false;
   }
 }
 

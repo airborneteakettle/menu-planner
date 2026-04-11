@@ -2,6 +2,7 @@ import logging
 import re
 import requests
 from fractions import Fraction
+from urllib.parse import urlparse
 from recipe_scrapers import scrape_html
 from app.services.usda import estimate_recipe_nutrition, parse_ingredient
 
@@ -112,6 +113,23 @@ def _parse_servings(yields_str: str | None) -> int:
         return 1
     match = re.search(r"\d+", str(yields_str))
     return int(match.group()) if match else 1
+
+
+def title_from_url(url: str) -> str:
+    """Derive a human-readable recipe name from a URL path segment."""
+    try:
+        path = urlparse(url).path.rstrip('/')
+        segment = path.split('/')[-1] if path else ''
+        # Strip file extensions
+        segment = re.sub(r'\.(html?|php|aspx?)$', '', segment, flags=re.IGNORECASE)
+        if not segment:
+            return ''
+        name = segment.replace('-', ' ').replace('_', ' ')
+        # Remove trailing numeric IDs like "chicken-soup-123456"
+        name = re.sub(r'\s+\d{4,}$', '', name).strip()
+        return name.title()
+    except Exception:
+        return ''
 
 
 def import_recipe_from_url(url: str, usda_api_key: str, browserless_key: str | None = None, scrapingbee_key: str | None = None) -> dict:

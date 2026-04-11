@@ -1,15 +1,82 @@
+import json
 import logging
 import re
+import sqlite3
 import threading
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timedelta, timezone
 
 log = logging.getLogger(__name__)
 
-# Module-level caches to avoid redundant USDA HTTP calls across requests.
-_search_cache: dict[str, list] = {}       # food_name  → foods list
-_portion_cache: dict[int, list] = {}      # fdcId      → foodPortions list
+# ── Persistent cache (SQLite) + in-memory L1 ─────────────────────────────────
+
+_DB_PATH: str | None = None          # set by init_cache() at app startup
+_CACHE_TTL = timedelta(days=30)
+
+_search_cache: dict[str, list] = {}  # L1: food_name → foods list
+_portion_cache: dict[int, list] = {} # L1: fdcId     → foodPortions list
 _cache_lock = threading.Lock()
+
+
+def init_cache(db_uri: str) -> None:
+    """
+    Called once at app startup.  Strips the sqlite:/// prefix, stores the
+    path, and creates the usda_cache table if it doesn't already exist.
+    """
+    global _DB_PATH
+    if db_uri.startswith("sqlite:///"):
+        db_uri = db_uri[len("sqlite:///"):]
+    _DB_PATH = db_uri
+    try:
+        with sqlite3.connect(_DB_PATH) as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS usda_cache (
+                    key       TEXT PRIMARY KEY,
+                    data      TEXT NOT NULL,
+                    cached_at TEXT NOT NULL
+                )
+            """)
+            conn.commit()
+        log.info("USDA_CACHE_INIT: db=%s ttl=%s", _DB_PATH, _CACHE_TTL)
+    except Exception as e:
+        log.warning("USDA_CACHE_INIT_ERROR: %s", e)
+
+
+def _db_get(key: str) -> list | None:
+    """Read from SQLite cache; returns None if missing or expired."""
+    if not _DB_PATH:
+        return None
+    try:
+        with sqlite3.connect(_DB_PATH) as conn:
+            row = conn.execute(
+                "SELECT data, cached_at FROM usda_cache WHERE key = ?", (key,)
+            ).fetchone()
+        if row is None:
+            return None
+        cached_at = datetime.fromisoformat(row[1])
+        if datetime.now(timezone.utc) - cached_at > _CACHE_TTL:
+            return None  # expired — will be refreshed and overwritten
+        return json.loads(row[0])
+    except Exception as e:
+        log.warning("USDA_CACHE_READ_ERROR: key=%r error=%s", key, e)
+        return None
+
+
+def _db_set(key: str, data: list) -> None:
+    """Write to SQLite cache."""
+    if not _DB_PATH:
+        return
+    try:
+        now = datetime.now(timezone.utc).isoformat()
+        with sqlite3.connect(_DB_PATH) as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO usda_cache (key, data, cached_at) VALUES (?, ?, ?)",
+                (key, json.dumps(data), now),
+            )
+            conn.commit()
+    except Exception as e:
+        log.warning("USDA_CACHE_WRITE_ERROR: key=%r error=%s", key, e)
 
 USDA_BASE = "https://api.nal.usda.gov/fdc/v1"
 
@@ -243,8 +310,17 @@ def _fetch_portion_grams(fdc_id: int, amount: float, unit: str, api_key: str, fo
     log.info("USDA_PORTION_FETCH: fdcId=%d amount=%s unit=%r target=%r food_name=%r",
              fdc_id, amount, unit, target, food_name)
     try:
+        # L1 check
         with _cache_lock:
             portions = _portion_cache.get(fdc_id)
+
+        # L2 check (SQLite)
+        if portions is None:
+            portions = _db_get(f"portion:{fdc_id}")
+            if portions is not None:
+                log.info("USDA_DB_CACHE_HIT: portions fdcId=%d count=%d", fdc_id, len(portions))
+                with _cache_lock:
+                    _portion_cache[fdc_id] = portions
 
         if portions is None:
             resp = requests.get(
@@ -256,9 +332,11 @@ def _fetch_portion_grams(fdc_id: int, amount: float, unit: str, api_key: str, fo
             if not resp.ok:
                 log.warning("USDA_PORTION_ERROR: fdcId=%d status=%s", fdc_id, resp.status_code)
                 with _cache_lock:
-                    _portion_cache[fdc_id] = []  # cache the miss too
+                    _portion_cache[fdc_id] = []
+                _db_set(f"portion:{fdc_id}", [])  # cache the miss so we don't retry
                 return None
             portions = resp.json().get("foodPortions", [])
+            _db_set(f"portion:{fdc_id}", portions)
             with _cache_lock:
                 _portion_cache[fdc_id] = portions
         else:
@@ -356,8 +434,17 @@ def lookup_ingredient_nutrition(ingredient: str, api_key: str) -> dict | None:
 
     try:
         # Search with cache — same food_name won't hit USDA twice in a session.
+        # L1 check
         with _cache_lock:
             cached = _search_cache.get(food_name)
+
+        # L2 check (SQLite)
+        if cached is None:
+            cached = _db_get(f"search:{food_name}")
+            if cached is not None:
+                log.info("USDA_DB_CACHE_HIT: search food_name=%r results=%d", food_name, len(cached))
+                with _cache_lock:
+                    _search_cache[food_name] = cached
 
         if cached is not None:
             foods = cached
@@ -385,6 +472,7 @@ def lookup_ingredient_nutrition(ingredient: str, api_key: str) -> dict | None:
             sr_foods         = _search("SR Legacy") if remaining > 0 else []
             foods            = foundation_foods + sr_foods[:remaining]
 
+            _db_set(f"search:{food_name}", foods)
             with _cache_lock:
                 _search_cache[food_name] = foods
         log.info("USDA_SEARCH_RESULTS: food_name=%r count=%d ids=%s",

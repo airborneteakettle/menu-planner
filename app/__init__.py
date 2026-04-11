@@ -140,4 +140,7 @@ def create_app(config_class=Config):
         from app.models import household  # noqa: F401
         from app.models import weight     # noqa: F401
 
+    from app.services.usda import init_cache
+    init_cache(app.config['SQLALCHEMY_DATABASE_URI'])
+
     return app

@@ -1017,6 +1017,17 @@ async function checkNutrition() {
     const { totals, breakdown } = await api.recipes.estimateNutrition(ingredients);
     _pendingNutrition = totals;
 
+    // Populate the nutrition fields so the USDA values are what gets saved.
+    // (When editing, fields are pre-filled with old values and would otherwise
+    //  override _pendingNutrition at save time.)
+    const fmtN = v => (v != null && v > 0) ? String(Math.round(v * 10) / 10) : '';
+    document.getElementById('ar-calories').value = totals.calories  ? String(Math.round(totals.calories)) : '';
+    document.getElementById('ar-protein').value  = fmtN(totals.protein_g);
+    document.getElementById('ar-carbs').value    = fmtN(totals.carbs_g);
+    document.getElementById('ar-fat').value      = fmtN(totals.fat_g);
+    document.getElementById('ar-fiber').value    = fmtN(totals.fiber_g);
+    _updatePerServingPreview();
+
     document.getElementById('ar-nutrition-panel').innerHTML = renderNutritionBreakdown(totals, breakdown);
     panel.classList.remove('d-none');
     _updateSaveVisibility();
@@ -1045,7 +1056,10 @@ async function saveManualRecipe() {
   const manualCarbs = parseFloat(document.getElementById('ar-carbs').value)    || null;
   const manualFat   = parseFloat(document.getElementById('ar-fat').value)      || null;
   const manualFiber = parseFloat(document.getElementById('ar-fiber').value)    || null;
-  const hasManual   = manualCals || manualProt || manualCarbs || manualFat;
+  // If USDA check was run it already populated the form fields, so form values
+  // ARE the USDA values. Source is usda_estimate when _pendingNutrition is set,
+  // manual when the user typed values without running the check.
+  const hasManual   = !_pendingNutrition && (manualCals || manualProt || manualCarbs || manualFat);
 
   // Both manual totals and USDA totals are divided by servings before storing
   const perServing = (v) => (v || null) && Math.round((v / servings) * 10) / 10;
@@ -1055,7 +1069,7 @@ async function saveManualRecipe() {
   const finalCarbs = perServing(manualCarbs ?? nutrition.carbs_g);
   const finalFat   = perServing(manualFat   ?? nutrition.fat_g);
   const finalFiber = perServing(manualFiber ?? nutrition.fiber_g);
-  const nutritionSource = hasManual ? 'manual' : (_pendingNutrition ? 'usda_estimate' : null);
+  const nutritionSource = _pendingNutrition ? 'usda_estimate' : (hasManual ? 'manual' : null);
 
   const payload = {
     name:             document.getElementById('ar-name').value.trim(),

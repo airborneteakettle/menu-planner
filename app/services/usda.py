@@ -182,6 +182,13 @@ def _parse_nutrients(food_nutrients: list) -> dict:
         num = str(n.get("nutrientNumber") or (n.get("nutrient") or {}).get("number") or "")
         if num in num_map:
             result[num_map[num]] = float(n.get("value") or 0)
+    # Fallback: if calories are missing but macros are present, derive from Atwater factors
+    if result["calories"] == 0 and any(result[k] > 0 for k in ("protein_g", "carbs_g", "fat_g")):
+        result["calories"] = (
+            result["protein_g"] * 4 +
+            result["carbs_g"]   * 4 +
+            result["fat_g"]     * 9
+        )
     return result
 
 

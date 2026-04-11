@@ -181,34 +181,47 @@ def shopping_list():
 
 @bp.route("/", methods=["POST"])
 def add_entry():
-    data  = request.get_json()
+    data      = request.get_json()
+    recipe_id = data.get("recipe_id")
     entry = MenuEntry(
         user_id   = current_user.id,
         date      = date.fromisoformat(data["date"]),
         meal_type = data["meal_type"],
-        recipe_id = data["recipe_id"],
+        recipe_id = recipe_id,
         servings  = data.get("servings", 1.0),
     )
+    if not recipe_id:
+        # Ad hoc meal — store label + nutrition directly on the entry
+        entry.adhoc_name      = (data.get("adhoc_name") or "").strip() or "Ad hoc meal"
+        entry.adhoc_calories  = data.get("adhoc_calories")
+        entry.adhoc_protein_g = data.get("adhoc_protein_g")
+        entry.adhoc_carbs_g   = data.get("adhoc_carbs_g")
+        entry.adhoc_fat_g     = data.get("adhoc_fat_g")
+        entry.adhoc_fiber_g   = data.get("adhoc_fiber_g")
+
     db.session.add(entry)
     db.session.flush()
 
-    # Share with requested user ids immediately
     for uid in (data.get("share_with") or []):
         if uid != current_user.id:
             db.session.add(MenuEntryShare(entry_id=entry.id, user_id=uid))
 
-    # Auto-tag recipe with meal type
-    meal_type = data.get("meal_type")
-    if meal_type:
-        recipe = Recipe.query.get(data["recipe_id"])
-        if recipe and meal_type not in [t.name for t in recipe.tags]:
+    # Auto-tag recipe with meal type (only for recipe-backed entries)
+    if recipe_id:
+        meal_type = data.get("meal_type")
+        recipe    = Recipe.query.get(recipe_id)
+        if recipe and meal_type and meal_type not in [t.name for t in recipe.tags]:
             tag = Tag.query.filter_by(name=meal_type).first() or Tag(name=meal_type)
             db.session.add(tag)
             recipe.tags.append(tag)
 
     db.session.commit()
-    log.info("MENU_ADD: user=%s entry_id=%d recipe_id=%d date=%s meal=%s",
-             current_user.username, entry.id, entry.recipe_id, entry.date, entry.meal_type)
+    if recipe_id:
+        log.info("MENU_ADD: user=%s entry_id=%d recipe_id=%d date=%s meal=%s",
+                 current_user.username, entry.id, recipe_id, entry.date, entry.meal_type)
+    else:
+        log.info("MENU_ADD_ADHOC: user=%s entry_id=%d name=%r date=%s meal=%s",
+                 current_user.username, entry.id, entry.adhoc_name, entry.date, entry.meal_type)
     return jsonify(entry.to_dict(viewer_id=current_user.id)), 201
 
 

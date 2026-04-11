@@ -178,7 +178,7 @@ function buildDayView(grid, dates, lookup, todayStr) {
 }
 
 function entryChipHtml(e) {
-  const isShared   = !e.is_mine;  // viewing someone else's shared entry
+  const isShared   = !e.is_mine;
   const hasShares  = e.shared_with?.length > 0;
   const sharedWith = (e.shared_with || []).join(', ');
 
@@ -189,13 +189,14 @@ function entryChipHtml(e) {
   const shareIndicator = hasShares
     ? `<span class="chip-shared-badge" title="Shared with ${sharedWith}"><i class="bi bi-people-fill"></i></span>`
     : '';
-
-  // Share button only shown for own entries when other users exist (rendered hidden, shown by CSS when _users loaded)
   const shareBtn = e.is_mine
     ? `<button class="btn-share-entry" data-entry-id="${e.id}"
                data-shared-with='${JSON.stringify(e.shared_with || [])}' title="Share">
          <i class="bi bi-person-plus"></i>
        </button>`
+    : '';
+  const adhocBadge = e.is_adhoc
+    ? `<span class="chip-adhoc-badge" title="Ad hoc meal"><i class="bi bi-pencil-square"></i></span>`
     : '';
 
   const n = e.nutrition;
@@ -210,12 +211,14 @@ function entryChipHtml(e) {
 
   return `
     <span class="${chipClass}"
-          data-recipe-id="${e.recipe_id}"
+          data-recipe-id="${e.recipe_id || ''}"
           data-entry-id="${e.id}"
-          data-is-mine="${e.is_mine}">
+          data-is-mine="${e.is_mine}"
+          data-is-adhoc="${e.is_adhoc}">
       <span style="display:flex;align-items:center;gap:4px;width:100%">
         ${ownerBadge}
-        <span class="chip-name">${e.recipe_name}</span>
+        ${adhocBadge}
+        <span class="chip-name ${e.is_adhoc ? 'chip-name-adhoc' : ''}">${e.recipe_name || ''}</span>
         ${shareIndicator}
         ${shareBtn}
         <button class="btn-remove" data-entry-id="${e.id}" title="Remove">×</button>
@@ -225,11 +228,11 @@ function entryChipHtml(e) {
 }
 
 function wireGrid(grid) {
-  grid.querySelectorAll('.chip-name').forEach(el =>
-    el.addEventListener('click', () =>
-      openRecipeModal(+el.closest('.entry-chip').dataset.recipeId)
-    )
-  );
+  grid.querySelectorAll('.chip-name').forEach(el => {
+    const chip = el.closest('.entry-chip');
+    if (chip.dataset.isAdhoc === 'true') return; // no detail view for ad hoc
+    el.addEventListener('click', () => openRecipeModal(+chip.dataset.recipeId));
+  });
 
   grid.querySelectorAll('.btn-remove').forEach(btn =>
     btn.addEventListener('click', async e => {
@@ -369,6 +372,11 @@ function openRecipePicker(date, meal) {
             <div id="picker-list" class="loading-state">
               <div class="spinner-border spinner-border-sm text-success"></div>
             </div>
+            <div class="border-top pt-2 mt-2">
+              <button class="btn btn-outline-secondary btn-sm w-100" id="btn-picker-adhoc">
+                <i class="bi bi-pencil-square me-1"></i>Add Ad Hoc Meal (no recipe)
+              </button>
+            </div>
             ${_users.length ? `
               <div class="border-top pt-2 mt-2">
                 <div class="small fw-semibold text-muted mb-1"
@@ -431,7 +439,69 @@ function openRecipePicker(date, meal) {
     });
   });
 
+  document.getElementById('btn-picker-adhoc').addEventListener('click', () => {
+    modal.hide();
+    openAdHocModal(date, meal);
+  });
+
   document.getElementById('modal-recipe-picker').addEventListener('hidden.bs.modal', () => {
     document.getElementById('modal-recipe-picker')?.remove();
   });
 }
+
+// ── Ad Hoc Meal Modal ─────────────────────────────────────────────────────────
+
+function openAdHocModal(date, meal) {
+  document.getElementById('adhoc-name').value     = '';
+  document.getElementById('adhoc-date').value     = date;
+  document.getElementById('adhoc-meal-type').value = meal || 'dinner';
+  document.getElementById('adhoc-calories').value = '';
+  document.getElementById('adhoc-protein').value  = '';
+  document.getElementById('adhoc-carbs').value    = '';
+  document.getElementById('adhoc-fat').value      = '';
+  document.getElementById('adhoc-fiber').value    = '';
+  document.getElementById('adhoc-error').classList.add('d-none');
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('modal-adhoc-meal')).show();
+  setTimeout(() => document.getElementById('adhoc-name').focus(), 300);
+}
+
+// Wire once at module load
+document.addEventListener('DOMContentLoaded', () => {
+  const submitBtn = document.getElementById('btn-adhoc-submit');
+  if (!submitBtn) return;
+  submitBtn.addEventListener('click', async () => {
+    const name    = document.getElementById('adhoc-name').value.trim();
+    const errEl   = document.getElementById('adhoc-error');
+    const spinner = document.getElementById('adhoc-spinner');
+    errEl.classList.add('d-none');
+    if (!name) {
+      errEl.textContent = 'A label is required.';
+      errEl.classList.remove('d-none');
+      document.getElementById('adhoc-name').focus();
+      return;
+    }
+    const num = id => { const v = parseFloat(document.getElementById(id).value); return isNaN(v) ? null : v; };
+    spinner.classList.remove('d-none');
+    submitBtn.disabled = true;
+    try {
+      await api.menu.add({
+        date:           document.getElementById('adhoc-date').value,
+        meal_type:      document.getElementById('adhoc-meal-type').value,
+        adhoc_name:     name,
+        adhoc_calories: num('adhoc-calories'),
+        adhoc_protein_g: num('adhoc-protein'),
+        adhoc_carbs_g:  num('adhoc-carbs'),
+        adhoc_fat_g:    num('adhoc-fat'),
+        adhoc_fiber_g:  num('adhoc-fiber'),
+      });
+      bootstrap.Modal.getOrCreateInstance(document.getElementById('modal-adhoc-meal')).hide();
+      if (typeof window._addMenuCallback === 'function') window._addMenuCallback();
+    } catch (e) {
+      errEl.textContent = e.message;
+      errEl.classList.remove('d-none');
+    } finally {
+      spinner.classList.add('d-none');
+      submitBtn.disabled = false;
+    }
+  });
+});

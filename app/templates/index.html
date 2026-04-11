@@ -255,6 +255,72 @@
   </div>
 </div>
 
+<!-- Modal: Ad Hoc Meal -->
+<div class="modal fade" id="modal-adhoc-meal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-pencil-square me-1"></i>Ad Hoc Meal</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label fw-medium" for="adhoc-name">Label <span class="text-danger">*</span></label>
+          <input type="text" class="form-control" id="adhoc-name" placeholder="e.g. Chipotle burrito bowl">
+        </div>
+        <div class="row g-2 mb-3">
+          <div class="col-6">
+            <label class="form-label fw-medium" for="adhoc-date">Date</label>
+            <input type="date" class="form-control" id="adhoc-date">
+          </div>
+          <div class="col-6">
+            <label class="form-label fw-medium" for="adhoc-meal-type">Meal</label>
+            <select class="form-select" id="adhoc-meal-type">
+              <option value="breakfast">Breakfast</option>
+              <option value="lunch">Lunch</option>
+              <option value="dinner" selected>Dinner</option>
+              <option value="snack">Snack</option>
+            </select>
+          </div>
+        </div>
+        <div class="small fw-semibold text-muted text-uppercase mb-2" style="font-size:.7rem;letter-spacing:.05em">
+          Nutrition <span class="fw-normal text-lowercase">(optional)</span>
+        </div>
+        <div class="row g-2 mb-3">
+          <div class="col-6 col-sm-4">
+            <label class="form-label small mb-1" for="adhoc-calories">Calories</label>
+            <input type="number" class="form-control form-control-sm" id="adhoc-calories" min="0" placeholder="kcal">
+          </div>
+          <div class="col-6 col-sm-4">
+            <label class="form-label small mb-1" for="adhoc-protein">Protein (g)</label>
+            <input type="number" class="form-control form-control-sm" id="adhoc-protein" min="0" placeholder="g">
+          </div>
+          <div class="col-6 col-sm-4">
+            <label class="form-label small mb-1" for="adhoc-carbs">Carbs (g)</label>
+            <input type="number" class="form-control form-control-sm" id="adhoc-carbs" min="0" placeholder="g">
+          </div>
+          <div class="col-6 col-sm-4">
+            <label class="form-label small mb-1" for="adhoc-fat">Fat (g)</label>
+            <input type="number" class="form-control form-control-sm" id="adhoc-fat" min="0" placeholder="g">
+          </div>
+          <div class="col-6 col-sm-4">
+            <label class="form-label small mb-1" for="adhoc-fiber">Fiber (g)</label>
+            <input type="number" class="form-control form-control-sm" id="adhoc-fiber" min="0" placeholder="g">
+          </div>
+        </div>
+        <div id="adhoc-error" class="alert alert-danger d-none"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-success" id="btn-adhoc-submit">
+          <span class="spinner-border spinner-border-sm d-none me-1" id="adhoc-spinner"></span>
+          Add to Planner
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script type="module" src="/static/js/app.js"></script>

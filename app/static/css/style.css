@@ -148,6 +148,17 @@ body {
 
 .entry-chip:hover { background: #c8e6c9; }
 
+.chip-adhoc-badge {
+  font-size: .65rem;
+  color: #888;
+  flex-shrink: 0;
+}
+
+.chip-name-adhoc {
+  cursor: default;
+  font-style: italic;
+}
+
 .entry-chip .btn-remove {
   background: none;
   border: none;
@@ -295,6 +306,10 @@ body {
 .shop-item.checked .shop-item-name {
   text-decoration: line-through;
   color: #aaa;
+}
+
+#shop-body.hide-checked .shop-item.checked {
+  display: none;
 }
 
 .shop-item input[type=checkbox] {

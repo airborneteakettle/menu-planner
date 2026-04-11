@@ -6,6 +6,7 @@ let shoppingOffset = 0;
 let _categories    = []; // recipe categories for the current week
 let _checkedKeys   = new Set();
 let _weekStart     = '';
+let _showChecked   = false; // checked items hidden by default
 
 export async function renderShopping(el) {
   _el = el;
@@ -20,6 +21,9 @@ export async function renderShopping(el) {
         Next <i class="bi bi-chevron-right"></i>
       </button>
       <button class="btn btn-outline-secondary btn-sm" id="shop-today">This Week</button>
+      <button class="btn btn-outline-secondary btn-sm" id="btn-toggle-checked" title="Toggle checked items">
+        <i class="bi bi-eye-slash me-1"></i>Checked
+      </button>
       <button class="btn btn-outline-success btn-sm" id="btn-print-list">
         <i class="bi bi-printer me-1"></i>Print
       </button>
@@ -64,6 +68,7 @@ export async function renderShopping(el) {
   document.getElementById('shop-next').addEventListener('click',  () => { shoppingOffset++; loadList(); });
   document.getElementById('shop-today').addEventListener('click', () => { shoppingOffset = 0; loadList(); });
   document.getElementById('btn-print-list').addEventListener('click', printList);
+  document.getElementById('btn-toggle-checked').addEventListener('click', toggleCheckedVisibility);
 
   // Modal save – single persistent listener (modal lives outside shop-body)
   document.getElementById('modal-save-btn').addEventListener('click', saveModalItem);
@@ -242,6 +247,7 @@ function renderList(body, data, custom = []) {
       const key = row.dataset.key;
       cb.checked ? _checkedKeys.add(key) : _checkedKeys.delete(key);
       row.classList.toggle('checked', cb.checked);
+      applyCheckedVisibility();
       try {
         await api.menu.shoppingChecked.set(_weekStart, key, cb.checked);
       } catch (e) { toast(e.message, 'danger'); }
@@ -262,6 +268,30 @@ function renderList(body, data, custom = []) {
 
   // Wire delete on existing custom rows
   body.querySelectorAll('[data-custom-id]').forEach(wireCustomDelete);
+
+  // Apply current checked-visibility state
+  applyCheckedVisibility();
+}
+
+function applyCheckedVisibility() {
+  const body = document.getElementById('shop-body');
+  if (!body) return;
+  body.classList.toggle('hide-checked', !_showChecked);
+
+  const btn  = document.getElementById('btn-toggle-checked');
+  const icon = btn?.querySelector('i');
+  if (_showChecked) {
+    icon?.setAttribute('class', 'bi bi-eye me-1');
+    btn?.classList.add('active');
+  } else {
+    icon?.setAttribute('class', 'bi bi-eye-slash me-1');
+    btn?.classList.remove('active');
+  }
+}
+
+function toggleCheckedVisibility() {
+  _showChecked = !_showChecked;
+  applyCheckedVisibility();
 }
 
 function wireCustomDelete(row) {

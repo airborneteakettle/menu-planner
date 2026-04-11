@@ -164,6 +164,67 @@ def _parse_nutrients(food_nutrients: list) -> dict:
     return result
 
 
+# ── Volume-unit → grams via USDA portion data ─────────────────────────────────
+
+# Units where water density (240 g/cup) is reliable (liquids/thin liquids)
+_LIQUID_UNITS = frozenset([
+    'ml', 'l', 'liter', 'liters',
+    'fl oz', 'fluid oz', 'fluid ounce', 'fluid ounces',
+])
+
+# Canonical names used in USDA measureUnit records
+_UNIT_TO_USDA = {
+    'cup': 'cup',   'cups': 'cup',
+    'tbsp': 'tablespoon', 'tablespoon': 'tablespoon', 'tablespoons': 'tablespoon',
+    'tsp':  'teaspoon',   'teaspoon':  'teaspoon',    'teaspoons':   'teaspoon',
+}
+
+
+def _parse_qty_parts(quantity_str: str) -> tuple[float, str] | None:
+    """Return (amount, unit_lowercase) from a quantity string, or None."""
+    s = quantity_str.strip()
+    for char, val in _FRAC_CHARS.items():
+        s = s.replace(char, ' ' + val)
+    m = re.match(r'^([\d\s./]+)\s*([a-zA-Z].*)$', s)
+    if m:
+        return _parse_amount(m.group(1)), m.group(2).strip().lower()
+    m = re.match(r'^([\d\s./]+)$', s)
+    if m:
+        return _parse_amount(m.group(1)), ''
+    return None
+
+
+def _fetch_portion_grams(fdc_id: int, amount: float, unit: str, api_key: str) -> float | None:
+    """
+    Fetch USDA food portions and return gram weight for the given volume measure.
+    E.g. "1 cup almonds" → looks up "cup" in foodPortions → returns ~143 g.
+    Returns None if no matching portion is found.
+    """
+    target = _UNIT_TO_USDA.get(unit)
+    if not target:
+        return None
+    try:
+        resp = requests.get(
+            f"{USDA_BASE}/food/{fdc_id}",
+            params={"api_key": api_key},
+            timeout=10,
+        )
+        if not resp.ok:
+            return None
+        portions = resp.json().get("foodPortions", [])
+        for p in portions:
+            mu   = p.get("measureUnit") or {}
+            name = (mu.get("name") or "").lower().strip()
+            abbr = (mu.get("abbreviation") or "").lower().strip()
+            gram_weight = float(p.get("gramWeight") or 0)
+            p_amount    = float(p.get("amount")     or 1)
+            if target in (name, abbr) and gram_weight > 0:
+                return gram_weight * amount / p_amount
+    except Exception:
+        pass
+    return None
+
+
 # ── Public lookup ─────────────────────────────────────────────────────────────
 
 def _usda_serving_grams(food: dict) -> float | None:
@@ -189,8 +250,14 @@ def lookup_ingredient_nutrition(ingredient: str, api_key: str) -> dict | None:
     - Uses the food's own serving size when the quantity is a bare count (e.g. "1 apple").
     - Falls back to per-100 g when no quantity or unit is recognised.
     """
-    # Seasonings / garnishes added "to taste" contribute negligible nutrition
+    # Seasonings / garnishes added "to taste" or with no measured quantity
     if re.search(r"\bto\s+taste\b|\bas\s+needed\b", ingredient, re.IGNORECASE):
+        return None
+
+    quantity_str_check, _ = parse_ingredient(ingredient)
+    if quantity_str_check is None and re.search(
+        r"\b(salt|pepper|seasoning|spice|flakes)\b", ingredient, re.IGNORECASE
+    ):
         return None
 
     quantity_str, food_name = parse_ingredient(ingredient)
@@ -222,6 +289,17 @@ def lookup_ingredient_nutrition(ingredient: str, api_key: str) -> dict | None:
         return None
 
     grams = quantity_to_grams(quantity_str)
+
+    # For non-liquid volume units (cup, tbsp, tsp), water density is wrong for
+    # dry ingredients. Use the USDA food's own portion data when available.
+    if grams is not None and quantity_str:
+        parts = _parse_qty_parts(quantity_str)
+        if parts:
+            qty_amount, qty_unit = parts
+            if qty_unit in _UNIT_TO_USDA and qty_unit not in _LIQUID_UNITS:
+                portion_g = _fetch_portion_grams(food["fdcId"], qty_amount, qty_unit, api_key)
+                if portion_g is not None:
+                    grams = portion_g
 
     # Bare-count fallback: "1 apple", "2 shallots" — use the food's own serving size
     # rather than the 100 g default so whole items aren't wildly over-estimated.

@@ -105,6 +105,16 @@ def quantity_to_grams(quantity_str: str | None) -> float | None:
 
 # ── Core ingredient parsing ───────────────────────────────────────────────────
 
+_LEADING_ADJ_RE = re.compile(
+    r"^(?:fresh(?:ly)?|very\s+ripe|ripe|crisp|small|medium|large|extra[- ]?large|"
+    r"coarsely|finely|thinly|roughly|lightly|loosely\s+packed|packed|"
+    r"frozen|canned|dried|ground|whole|"
+    r"low[- ]fat|fat[- ]free|"
+    r"sharp|smooth|plain|greek[- ]?style)\s+",
+    re.IGNORECASE,
+)
+
+
 def parse_ingredient(ingredient_str: str) -> tuple[str | None, str]:
     """
     Split a raw ingredient string into (quantity, food_name).
@@ -128,9 +138,18 @@ def parse_ingredient(ingredient_str: str) -> tuple[str | None, str]:
     food_name = re.sub(
         r",\s*(diced|chopped|sliced|minced|crushed|grated|shredded|beaten|"
         r"softened|melted|cooked|frozen|thawed|peeled|seeded|cored|trimmed|"
-        r"halved|quartered|divided|at room temperature|optional|for serving|to taste).*$",
+        r"halved|quartered|divided|at room temperature|optional|for serving|to taste|"
+        r"thinly|coarsely|finely|roughly|freshly|loosely packed|cut into.*).*$",
         "", food_name, flags=re.IGNORECASE,
     )
+    # Strip "or [alternative]" — keep only the first option
+    food_name = re.sub(r"\s+or\s+\S.*$", "", food_name, flags=re.IGNORECASE)
+    # Strip leading preparation/size adjectives (up to 3 passes for stacked adjectives)
+    for _ in range(3):
+        cleaned = _LEADING_ADJ_RE.sub("", food_name)
+        if cleaned == food_name:
+            break
+        food_name = cleaned
     food_name = re.sub(r"\s{2,}", " ", food_name).strip(" \t.,;:-")
     return quantity, food_name or ingredient_str
 
@@ -147,31 +166,76 @@ def _parse_nutrients(food_nutrients: list) -> dict:
 
 # ── Public lookup ─────────────────────────────────────────────────────────────
 
+def _usda_serving_grams(food: dict) -> float | None:
+    """Return the serving size in grams from a USDA food record, if available."""
+    size = food.get("servingSize")
+    unit = (food.get("servingSizeUnit") or "").lower().strip()
+    if not size:
+        return None
+    if unit in ("g", "gram", "grams"):
+        return float(size)
+    if unit in ("oz", "ounce", "ounces"):
+        return float(size) * 28.35
+    return None
+
+
 def lookup_ingredient_nutrition(ingredient: str, api_key: str) -> dict | None:
     """
     Search USDA for an ingredient and return nutrition scaled to the actual
-    quantity in the string.  Falls back to per-100 g when quantity is absent
-    or the unit is unrecognised.
+    quantity in the string.
+
+    - "to taste" / "as needed" items return None (negligible nutrition).
+    - Searches Foundation + SR Legacy only to avoid weird branded results.
+    - Uses the food's own serving size when the quantity is a bare count (e.g. "1 apple").
+    - Falls back to per-100 g when no quantity or unit is recognised.
     """
+    # Seasonings / garnishes added "to taste" contribute negligible nutrition
+    if re.search(r"\bto\s+taste\b|\bas\s+needed\b", ingredient, re.IGNORECASE):
+        return None
+
     quantity_str, food_name = parse_ingredient(ingredient)
     try:
         resp = requests.get(
             f"{USDA_BASE}/foods/search",
-            params={"query": food_name, "pageSize": 1, "api_key": api_key},
+            params={
+                "query":    food_name,
+                "pageSize": 5,
+                "api_key":  api_key,
+                "dataType": "Foundation,SR Legacy",
+            },
             timeout=10,
         )
         resp.raise_for_status()
         foods = resp.json().get("foods", [])
         if not foods:
             return None
-        per_100g = _parse_nutrients(foods[0].get("foodNutrients", []))
+        # Prefer the first result that has non-zero calories
+        def _has_calories(f):
+            return any(
+                float(n.get("value") or 0) > 0 and
+                (n.get("nutrientId") == 1008 or (n.get("nutrient") or {}).get("id") == 1008)
+                for n in f.get("foodNutrients", [])
+            )
+        food = next((f for f in foods if _has_calories(f)), foods[0])
+        per_100g = _parse_nutrients(food.get("foodNutrients", []))
     except requests.RequestException:
         return None
 
     grams = quantity_to_grams(quantity_str)
+
+    # Bare-count fallback: "1 apple", "2 shallots" — use the food's own serving size
+    # rather than the 100 g default so whole items aren't wildly over-estimated.
+    if grams is None and quantity_str:
+        bare = re.match(r"^([\d\s./½¼¾⅓⅔⅛]+)$", quantity_str.strip())
+        if bare:
+            serving_g = _usda_serving_grams(food)
+            if serving_g:
+                grams = _parse_amount(bare.group(1)) * serving_g
+
     if grams is not None:
         scale = grams / 100.0
         return {k: v * scale for k, v in per_100g.items()}
+    # No quantity at all → return per-100 g as a rough estimate
     return per_100g
 
 

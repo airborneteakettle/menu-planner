@@ -355,6 +355,8 @@ def lookup_ingredient_nutrition(ingredient: str, api_key: str) -> dict | None:
         log.info("USDA_FOOD_MATCH: fdcId=%s dataType=%s description=%r per100g_cal=%.1f",
                  food.get("fdcId"), food.get("dataType"),
                  food.get("description"), per_100g.get("calories", 0))
+        log.debug("USDA_RAW_NUTRIENTS: fdcId=%s nutrients=%s",
+                  food.get("fdcId"), food.get("foodNutrients", []))
     except requests.RequestException as e:
         log.error("USDA_REQUEST_ERROR: food_name=%r error=%s", food_name, e)
         return None

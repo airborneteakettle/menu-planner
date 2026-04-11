@@ -549,7 +549,24 @@ async function reimportRecipe(url) {
     await loadRecipes();
     openRecipeModal(recipe.id);
   } catch (e) {
-    toast(e.message, 'danger');
+    if (e.data?._scrape_failed) {
+      // Close recipe modal, open import modal with fallback UI pre-shown
+      bootstrap.Modal.getOrCreateInstance(document.getElementById('modal-recipe')).hide();
+      openImportModal();
+      // Wait for modal to be visible then pre-fill and trigger fallback display
+      setTimeout(() => {
+        document.getElementById('import-url').value = url;
+        const nameInput = document.getElementById('import-fallback-name');
+        nameInput.value = e.data.suggested_name || '';
+        document.getElementById('import-error').textContent = 'Could not scrape this page. Save a placeholder instead?';
+        document.getElementById('import-error').classList.remove('d-none');
+        document.getElementById('import-fallback').classList.remove('d-none');
+        document.getElementById('btn-import-save-stub').classList.remove('d-none');
+        setTimeout(() => nameInput.focus(), 50);
+      }, 400);
+    } else {
+      toast(e.message, 'danger');
+    }
   } finally {
     btn.disabled = false;
     spinner.classList.add('d-none');

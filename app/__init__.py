@@ -1,7 +1,8 @@
 import logging
 import subprocess
+import time
 import click
-from flask import Flask, render_template, redirect, url_for, request, jsonify
+from flask import Flask, render_template, redirect, url_for, request, jsonify, g
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_cors import CORS
@@ -68,6 +69,23 @@ def create_app(config_class=Config):
     @app.route("/")
     def index():
         return render_template("index.html")
+
+    # ── Request timing ────────────────────────────────────────────────────────
+    @app.before_request
+    def _start_timer():
+        g.start = time.monotonic()
+
+    @app.after_request
+    def _log_request(response):
+        duration_ms = (time.monotonic() - g.start) * 1000
+        # Skip static files to keep logs readable
+        if not request.path.startswith('/static/'):
+            logging.getLogger('app.perf').info(
+                "%s %s → %s  %.0fms",
+                request.method, request.path,
+                response.status_code, duration_ms,
+            )
+        return response
 
     # ── No-cache for JS/CSS so deploys take effect without a manual cache clear
     @app.after_request

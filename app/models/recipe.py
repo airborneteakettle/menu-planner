@@ -79,6 +79,12 @@ class Ingredient(db.Model):
     recipe_id = db.Column(db.Integer, db.ForeignKey("recipe.id"), nullable=False)
     name      = db.Column(db.String(200), nullable=False)
     quantity  = db.Column(db.String(100))
+    is_header = db.Column(db.Boolean, nullable=False, server_default='0')
 
     def to_dict(self):
-        return {"id": self.id, "name": self.name, "quantity": self.quantity}
+        return {
+            "id":        self.id,
+            "name":      self.name,
+            "quantity":  self.quantity,
+            "is_header": bool(self.is_header),
+        }

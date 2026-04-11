@@ -188,7 +188,7 @@ def import_recipe():
             db.session.delete(ing)
         db.session.flush()
         for ing in scraped.get("ingredients", []):
-            existing.ingredients.append(Ingredient(name=ing["name"], quantity=ing.get("quantity")))
+            existing.ingredients.append(Ingredient(name=ing["name"], quantity=ing.get("quantity"), is_header=ing.get("is_header", False)))
         apply_auto_tags(existing)
         db.session.commit()
         log.info("RECIPE_REIMPORT: user=%s recipe_id=%d name=%r", current_user.username, existing.id, existing.name)
@@ -210,7 +210,7 @@ def import_recipe():
         # meal_type intentionally not set — user sets this manually
     )
     for ing in scraped.get("ingredients", []):
-        recipe.ingredients.append(Ingredient(name=ing["name"], quantity=ing.get("quantity")))
+        recipe.ingredients.append(Ingredient(name=ing["name"], quantity=ing.get("quantity"), is_header=ing.get("is_header", False)))
 
     db.session.add(recipe)
     db.session.flush()          # assign recipe.id so tags can reference it
@@ -236,7 +236,7 @@ def create_recipe():
         nutrition_source = data.get("nutrition_source"),
     )
     for ing in data.get("ingredients", []):
-        recipe.ingredients.append(Ingredient(name=ing["name"], quantity=ing.get("quantity")))
+        recipe.ingredients.append(Ingredient(name=ing["name"], quantity=ing.get("quantity"), is_header=ing.get("is_header", False)))
     if "tags" in data:
         _sync_tags(recipe, data["tags"])
     db.session.add(recipe)
@@ -263,7 +263,7 @@ def update_recipe(recipe_id):
             db.session.delete(ing)
         db.session.flush()
         for ing in data["ingredients"]:
-            recipe.ingredients.append(Ingredient(name=ing["name"], quantity=ing.get("quantity")))
+            recipe.ingredients.append(Ingredient(name=ing["name"], quantity=ing.get("quantity"), is_header=ing.get("is_header", False)))
     db.session.commit()
     log.info("RECIPE_UPDATE: user=%s recipe_id=%d name=%r", current_user.username, recipe.id, recipe.name)
     return jsonify(recipe.to_dict())

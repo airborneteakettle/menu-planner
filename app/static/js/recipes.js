@@ -342,11 +342,12 @@ function populateModal(r, allTags) {
         ${r.ingredients?.length ? `
           <h6 class="fw-semibold mt-4 mb-2">Ingredients</h6>
           <ul class="list-unstyled mb-0">
-            ${r.ingredients.map(i => `
-              <li class="py-1 border-bottom small d-flex gap-2">
-                <span class="text-muted" style="min-width:70px">${i.quantity || ''}</span>
-                <span>${i.name}</span>
-              </li>`).join('')}
+            ${r.ingredients.map(i => i.is_header
+              ? `<li class="pt-3 pb-1 small fw-bold text-uppercase text-muted" style="letter-spacing:.06em;border-bottom:2px solid #dee2e6">${i.name}</li>`
+              : `<li class="py-1 border-bottom small d-flex gap-2">
+                  <span class="text-muted" style="min-width:70px">${i.quantity || ''}</span>
+                  <span>${i.name}</span>
+                </li>`).join('')}
           </ul>` : ''}
       </div>
 
@@ -519,8 +520,12 @@ function openEditModal(recipe) {
   container.innerHTML = '';
   if (recipe.ingredients?.length) {
     for (const ing of recipe.ingredients) {
-      const [amt, unit] = splitQuantity(ing.quantity);
-      addIngredientRow(amt, unit, ing.name);
+      if (ing.is_header) {
+        addHeaderRow(ing.name);
+      } else {
+        const [amt, unit] = splitQuantity(ing.quantity);
+        addIngredientRow(amt, unit, ing.name);
+      }
     }
   } else {
     addIngredientRow();
@@ -736,6 +741,7 @@ function _updatePerServingPreview() {
 
 function setupManualAddModal() {
   document.getElementById('ar-add-ingredient').addEventListener('click', () => addIngredientRow());
+  document.getElementById('ar-add-header').addEventListener('click', () => addHeaderRow());
   document.getElementById('ar-btn-check').addEventListener('click', checkNutrition);
   document.getElementById('ar-btn-save').addEventListener('click', saveManualRecipe);
   document.querySelectorAll('.ar-macro').forEach(el =>
@@ -777,9 +783,30 @@ const _UNIT_MAP = {
 
 const _UNICODE_FRACS = {'½':'1/2','¼':'1/4','¾':'3/4','⅓':'1/3','⅔':'2/3','⅛':'1/8','⅜':'3/8','⅝':'5/8','⅞':'7/8'};
 
+// Common ingredient words that can appear without a quantity — excluded from header detection
+const _INGREDIENT_WORDS = new Set([
+  'salt', 'pepper', 'water', 'oil', 'butter', 'sugar', 'flour', 'cream',
+  'milk', 'eggs', 'egg', 'vinegar', 'garlic', 'onion', 'sauce', 'broth',
+  'stock', 'wine', 'honey', 'mustard', 'lemon', 'lime', 'herbs', 'spices',
+  'powder', 'flakes', 'extract', 'juice', 'zest', 'cheese', 'yeast', 'baking',
+]);
+
+function _looksLikeHeader(line) {
+  if (/\d/.test(line)) return false;         // has a number → ingredient
+  if (line.includes(',')) return false;       // has comma → ingredient with descriptor
+  const words = line.trim().split(/\s+/);
+  if (words.length > 4) return false;         // too long to be a section name
+  // If any word matches a known no-quantity ingredient, it's not a header
+  if (words.some(w => _INGREDIENT_WORDS.has(w.toLowerCase()))) return false;
+  return true;
+}
+
 function parseIngredientLine(line) {
   line = line.trim();
   if (!line) return null;
+
+  // Detect section headers before any other processing
+  if (_looksLikeHeader(line)) return { amount: '', unit: '', name: line, is_header: true };
 
   // Normalize unicode fractions and fancy dashes in numbers
   line = line.replace(/[½¼¾⅓⅔⅛⅜⅝⅞]/g, m => _UNICODE_FRACS[m] || m);
@@ -821,18 +848,38 @@ function parsePastedIngredients() {
   const container = document.getElementById('ar-ingredients');
   // Clear placeholder blank rows if they're still empty
   container.querySelectorAll('.ar-ingredient-row').forEach(row => {
-    const hasContent = row.querySelector('.ar-ing-amount').value.trim() ||
-                       row.querySelector('.ar-ing-name').value.trim();
+    const input = row.classList.contains('ar-header-row')
+      ? row.querySelector('.ar-ing-header')
+      : null;
+    const hasContent = input
+      ? input.value.trim()
+      : (row.querySelector('.ar-ing-amount').value.trim() || row.querySelector('.ar-ing-name').value.trim());
     if (!hasContent) row.remove();
   });
 
-  for (const { amount, unit, name } of parsed) {
-    addIngredientRow(amount, unit, name);
+  for (const { amount, unit, name, is_header } of parsed) {
+    if (is_header) addHeaderRow(name);
+    else addIngredientRow(amount, unit, name);
   }
 
   // Hide paste area and clear it
   document.getElementById('ar-paste-input').value = '';
   document.getElementById('ar-paste-area').classList.add('d-none');
+}
+
+function addHeaderRow(name = '') {
+  const container = document.getElementById('ar-ingredients');
+  const row = document.createElement('div');
+  row.className = 'input-group input-group-sm mb-1 ar-ingredient-row ar-header-row';
+  row.innerHTML = `
+    <span class="input-group-text bg-light text-muted small" style="font-size:0.7rem;letter-spacing:.05em;white-space:nowrap">SECTION</span>
+    <input type="text" class="form-control fw-semibold ar-ing-header" placeholder="Section name (e.g. Dressing)" value="${escHtml(name)}">
+    <button type="button" class="btn btn-outline-secondary ar-remove-row" tabindex="-1">
+      <i class="bi bi-x"></i>
+    </button>`;
+  row.querySelector('.ar-remove-row').addEventListener('click', () => row.remove());
+  container.appendChild(row);
+  if (!name) setTimeout(() => row.querySelector('.ar-ing-header').focus(), 50);
 }
 
 function addIngredientRow(amount = '', unit = '', name = '') {
@@ -871,13 +918,17 @@ function addIngredientRow(amount = '', unit = '', name = '') {
 function getIngredients() {
   return [...document.querySelectorAll('.ar-ingredient-row')]
     .map(row => {
+      if (row.classList.contains('ar-header-row')) {
+        const name = row.querySelector('.ar-ing-header').value.trim();
+        return name ? { quantity: null, name, is_header: true } : null;
+      }
       const amount = row.querySelector('.ar-ing-amount').value.trim();
       const unit   = row.querySelector('.ar-ing-unit').value;
       const name   = row.querySelector('.ar-ing-name').value.trim();
       const qty    = [amount, unit].filter(Boolean).join(' ') || null;
       return { quantity: qty, name };
     })
-    .filter(i => i.name);
+    .filter(i => i?.name);
 }
 
 function renderNutritionBreakdown(totals, breakdown) {
@@ -950,7 +1001,7 @@ async function checkNutrition() {
     document.getElementById('ar-name').focus();
     return;
   }
-  const ingredients = getIngredients();
+  const ingredients = getIngredients().filter(i => !i.is_header);
   if (!ingredients.length) {
     errEl.textContent = 'Add at least one ingredient.';
     errEl.classList.remove('d-none');

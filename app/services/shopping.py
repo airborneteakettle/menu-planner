@@ -239,6 +239,8 @@ def generate_shopping_list(menu_entries) -> dict:
         if not recipe:
             continue
         for ing in recipe.ingredients:
+            if ing.is_header:
+                continue
             qty  = (ing.quantity or "").strip()
             name = ing.name.strip()
 

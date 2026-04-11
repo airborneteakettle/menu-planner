@@ -209,7 +209,7 @@ function renderList(body, data, custom = []) {
     sections.push(categorySection('Miscellaneous', [], customByCat['Miscellaneous'] || []));
   }
 
-  const noMeals = recipeCats.length === 0
+  const noMeals = allCats.every(cat => (data.list[cat] || []).length === 0)
     ? `<p class="text-muted small fst-italic mb-3">No meals planned — <a href="#planner">open the planner</a> to build your menu.</p>`
     : '';
 

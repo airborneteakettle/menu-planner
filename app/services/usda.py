@@ -314,18 +314,24 @@ def lookup_ingredient_nutrition(ingredient: str, api_key: str) -> dict | None:
     log.info("USDA_PARSED: quantity=%r food_name=%r", quantity_str, food_name)
 
     try:
+        # Pass dataType as repeated params — the USDA API requires
+        # ?dataType=Foundation&dataType=SR+Legacy, not a comma-separated string.
         resp = requests.get(
             f"{USDA_BASE}/foods/search",
-            params={
-                "query":    food_name,
-                "pageSize": 5,
-                "api_key":  api_key,
-                "dataType": "Foundation,SR Legacy",
-            },
+            params=[
+                ("query",    food_name),
+                ("pageSize", 5),
+                ("api_key",  api_key),
+                ("dataType", "Foundation"),
+                ("dataType", "SR Legacy"),
+            ],
             timeout=10,
         )
         resp.raise_for_status()
         foods = resp.json().get("foods", [])
+        log.info("USDA_SEARCH_RESULTS: food_name=%r count=%d ids=%s",
+                 food_name, len(foods),
+                 [(f.get("fdcId"), f.get("dataType"), f.get("description")) for f in foods])
         if not foods:
             log.warning("USDA_NO_RESULTS: food_name=%r", food_name)
             return None
@@ -338,8 +344,9 @@ def lookup_ingredient_nutrition(ingredient: str, api_key: str) -> dict | None:
             )
         food = next((f for f in foods if _has_calories(f)), foods[0])
         per_100g = _parse_nutrients(food.get("foodNutrients", []))
-        log.info("USDA_FOOD_MATCH: fdcId=%s description=%r per100g_cal=%.1f",
-                 food.get("fdcId"), food.get("description"), per_100g.get("calories", 0))
+        log.info("USDA_FOOD_MATCH: fdcId=%s dataType=%s description=%r per100g_cal=%.1f",
+                 food.get("fdcId"), food.get("dataType"),
+                 food.get("description"), per_100g.get("calories", 0))
     except requests.RequestException as e:
         log.error("USDA_REQUEST_ERROR: food_name=%r error=%s", food_name, e)
         return None
@@ -349,18 +356,31 @@ def lookup_ingredient_nutrition(ingredient: str, api_key: str) -> dict | None:
 
     # For non-liquid volume units (cup, tbsp, tsp), water density is wrong for
     # dry ingredients. Use the USDA food's own portion data when available.
+    # Try each search-result food in order until one returns valid portion data
+    # (some fdcIds — e.g. Survey/FNDDS foods — return 404 from the detail endpoint).
     if grams is not None and quantity_str:
         parts = _parse_qty_parts(quantity_str)
         if parts:
             qty_amount, qty_unit = parts
             log.info("USDA_QTY_PARTS: amount=%s unit=%r", qty_amount, qty_unit)
             if qty_unit in _UNIT_TO_USDA and qty_unit not in _LIQUID_UNITS:
-                portion_g = _fetch_portion_grams(food["fdcId"], qty_amount, qty_unit, api_key, food_name)
+                portion_g = None
+                for candidate_food in foods:
+                    portion_g = _fetch_portion_grams(
+                        candidate_food["fdcId"], qty_amount, qty_unit, api_key, food_name)
+                    if portion_g is not None:
+                        if candidate_food["fdcId"] != food["fdcId"]:
+                            log.info("USDA_PORTION_ALT_FOOD: used fdcId=%s %r instead of primary",
+                                     candidate_food["fdcId"], candidate_food.get("description"))
+                            # Recompute per_100g from the food that had portion data
+                            per_100g = _parse_nutrients(candidate_food.get("foodNutrients", []))
+                        break
                 if portion_g is not None:
                     log.info("USDA_PORTION_OVERRIDE: %.1fg (was %.1fg water-density)", portion_g, grams)
                     grams = portion_g
                 else:
-                    log.warning("USDA_PORTION_FALLBACK: no portion data found, using water-density %.1fg", grams)
+                    log.warning("USDA_PORTION_FALLBACK: no portion data found in any of %d results, using water-density %.1fg",
+                                len(foods), grams)
             else:
                 log.info("USDA_QTY_UNIT_SKIP: unit=%r — not a volume unit or is liquid, keeping %.1fg", qty_unit, grams)
 

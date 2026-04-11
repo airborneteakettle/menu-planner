@@ -336,14 +336,21 @@ def lookup_ingredient_nutrition(ingredient: str, api_key: str) -> dict | None:
         if not foods:
             log.warning("USDA_NO_RESULTS: food_name=%r", food_name)
             return None
-        # Prefer the first result that has non-zero calories
+        # Rank: Foundation first, SR Legacy second; within each prefer results
+        # that have a calories value — but never let a lower-quality data type
+        # beat a higher-quality one just because calories are missing in the
+        # search snippet (Foundation foods sometimes omit nutrients in search).
+        _DT_RANK = {'Foundation': 0, 'SR Legacy': 1}
         def _has_calories(f):
             return any(
                 float(n.get("value") or 0) > 0 and
                 (n.get("nutrientId") == 1008 or (n.get("nutrient") or {}).get("id") == 1008)
                 for n in f.get("foodNutrients", [])
             )
-        food = next((f for f in foods if _has_calories(f)), foods[0])
+        food = min(foods, key=lambda f: (
+            _DT_RANK.get(f.get("dataType", ""), 99),
+            0 if _has_calories(f) else 1,
+        ))
         per_100g = _parse_nutrients(food.get("foodNutrients", []))
         log.info("USDA_FOOD_MATCH: fdcId=%s dataType=%s description=%r per100g_cal=%.1f",
                  food.get("fdcId"), food.get("dataType"),

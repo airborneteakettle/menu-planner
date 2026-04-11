@@ -345,7 +345,7 @@ def lookup_ingredient_nutrition(ingredient: str, api_key: str) -> dict | None:
             f"{USDA_BASE}/foods/search",
             params=[
                 ("query",    food_name),
-                ("pageSize", 5),
+                ("pageSize", 10),
                 ("api_key",  api_key),
                 ("dataType", "Foundation"),
                 ("dataType", "SR Legacy"),
@@ -361,10 +361,10 @@ def lookup_ingredient_nutrition(ingredient: str, api_key: str) -> dict | None:
             log.warning("USDA_NO_RESULTS: food_name=%r", food_name)
             return None
         # Rank: Foundation first, SR Legacy second; within each prefer results
-        # that have a calories value — but never let a lower-quality data type
-        # beat a higher-quality one just because calories are missing in the
-        # search snippet (Foundation foods sometimes omit nutrients in search).
+        # whose description closely matches the query, then prefer entries that
+        # have a calories value in the search snippet.
         _DT_RANK = {'Foundation': 0, 'SR Legacy': 1}
+
         def _has_calories(f):
             return any(
                 float(n.get("value") or 0) > 0 and (
@@ -375,8 +375,23 @@ def lookup_ingredient_nutrition(ingredient: str, api_key: str) -> dict | None:
                 )
                 for n in f.get("foodNutrients", [])
             )
+
+        def _desc_match(desc: str, name: str) -> int:
+            """Lower score = better match."""
+            d = desc.lower()
+            n = name.lower().strip()
+            first_seg = d.split(',')[0].strip()
+            if first_seg == n:
+                return 0  # "Milk, whole…" for query "milk"
+            if d.startswith(n + ',') or d.startswith(n + ' '):
+                return 1  # description starts with exact name
+            if re.search(r'\b' + re.escape(n) + r'\b', d[:40]):
+                return 2  # name appears as a word near the start
+            return 3
+
         food = min(foods, key=lambda f: (
             _DT_RANK.get(f.get("dataType", ""), 99),
+            _desc_match(f.get("description", ""), food_name),
             0 if _has_calories(f) else 1,
         ))
         per_100g = _parse_nutrients(food.get("foodNutrients", []))

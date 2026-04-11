@@ -1,9 +1,15 @@
 import logging
 import re
+import threading
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 log = logging.getLogger(__name__)
+
+# Module-level cache: food_name → (foundation_foods, sr_foods)
+# Avoids re-hitting USDA for the same ingredient across recipes or re-checks.
+_search_cache: dict[str, list] = {}
+_search_cache_lock = threading.Lock()
 
 USDA_BASE = "https://api.nal.usda.gov/fdc/v1"
 
@@ -339,31 +345,38 @@ def lookup_ingredient_nutrition(ingredient: str, api_key: str) -> dict | None:
     log.info("USDA_PARSED: quantity=%r food_name=%r", quantity_str, food_name)
 
     try:
-        # Query Foundation and SR Legacy in parallel; Foundation results go first.
-        # SR Legacy results are only used to fill slots Foundation didn't cover.
-        def _search(data_type: str) -> list:
-            r = requests.get(
-                f"{USDA_BASE}/foods/search",
-                params=[
-                    ("query",    food_name),
-                    ("pageSize", 10),
-                    ("api_key",  api_key),
-                    ("dataType", data_type),
-                ],
-                timeout=10,
-            )
-            r.raise_for_status()
-            return r.json().get("foods", [])
+        # Search with cache — same food_name won't hit USDA twice in a session.
+        with _search_cache_lock:
+            cached = _search_cache.get(food_name)
 
-        with ThreadPoolExecutor(max_workers=2) as _pool:
-            f_future  = _pool.submit(_search, "Foundation")
-            sr_future = _pool.submit(_search, "SR Legacy")
-            foundation_foods = f_future.result()
-            sr_foods         = sr_future.result()
+        if cached is not None:
+            foods = cached
+            log.info("USDA_CACHE_HIT: food_name=%r results=%d", food_name, len(foods))
+        else:
+            def _search(data_type: str) -> list:
+                r = requests.get(
+                    f"{USDA_BASE}/foods/search",
+                    params=[
+                        ("query",    food_name),
+                        ("pageSize", 10),
+                        ("api_key",  api_key),
+                        ("dataType", data_type),
+                    ],
+                    timeout=10,
+                )
+                r.raise_for_status()
+                return r.json().get("foods", [])
 
-        # Foundation fills first; SR Legacy only pads remaining slots
-        remaining = max(0, 10 - len(foundation_foods))
-        foods = foundation_foods + sr_foods[:remaining]
+            # Foundation first (sequential within this thread — the outer
+            # ThreadPoolExecutor already parallelises across ingredients, so
+            # a nested pool here just creates too many simultaneous connections).
+            foundation_foods = _search("Foundation")
+            remaining        = max(0, 10 - len(foundation_foods))
+            sr_foods         = _search("SR Legacy") if remaining > 0 else []
+            foods            = foundation_foods + sr_foods[:remaining]
+
+            with _search_cache_lock:
+                _search_cache[food_name] = foods
         log.info("USDA_SEARCH_RESULTS: food_name=%r count=%d ids=%s",
                  food_name, len(foods),
                  [(f.get("fdcId"), f.get("dataType"), f.get("description")) for f in foods])

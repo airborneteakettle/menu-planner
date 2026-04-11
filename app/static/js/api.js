@@ -62,7 +62,8 @@ export const api = {
   settings: {
     getAccount:      ()        => req('/settings/account'),
     updateAccount:   (email)   => req('/settings/account', { method: 'POST', body: JSON.stringify({ email }) }),
-    autoTagRecipes:  ()        => req('/settings/auto-tag-recipes', { method: 'POST' }),
+    autoTagRecipes:       ()  => req('/settings/auto-tag-recipes',       { method: 'POST' }),
+    refreshUsdaNutrition: ()  => req('/settings/refresh-usda-nutrition', { method: 'POST' }),
     changePassword: (current_password, new_password) =>
       req('/settings/change-password', { method: 'POST', body: JSON.stringify({ current_password, new_password }) }),
   },

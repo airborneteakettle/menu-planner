@@ -1,9 +1,10 @@
 import logging
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, current_app
 from flask_login import current_user
 from app import db
-from app.models.recipe import Recipe
+from app.models.recipe import Recipe, Ingredient
 from app.services.auto_tags import apply_auto_tags
+from app.services.usda import estimate_recipe_nutrition, lookup_ingredient_nutrition, parse_ingredient
 
 bp = Blueprint("settings", __name__)
 log = logging.getLogger(__name__)
@@ -84,3 +85,38 @@ def auto_tag_recipes():
         "tags_added":        total_added,
         "results":           results,
     })
+
+
+@bp.route("/refresh-usda-nutrition", methods=["POST"])
+def refresh_usda_nutrition():
+    """
+    Re-run USDA nutrition estimation for every recipe whose nutrition came
+    from the USDA estimate (nutrition_source = 'usda_estimate').
+    """
+    api_key = current_app.config.get("USDA_API_KEY", "DEMO_KEY")
+    recipes = Recipe.query.filter_by(nutrition_source="usda_estimate").all()
+    updated = 0
+    skipped = 0
+
+    for recipe in recipes:
+        ingredient_strings = [
+            " ".join(filter(None, [ing.quantity, ing.name]))
+            for ing in recipe.ingredients
+            if not ing.is_header
+        ]
+        if not ingredient_strings:
+            skipped += 1
+            continue
+
+        nutrition = estimate_recipe_nutrition(ingredient_strings, api_key)
+        srv = recipe.servings or 1
+        recipe.calories  = (nutrition.get("calories")  or 0) / srv or None
+        recipe.protein_g = (nutrition.get("protein_g") or 0) / srv or None
+        recipe.fat_g     = (nutrition.get("fat_g")     or 0) / srv or None
+        recipe.carbs_g   = (nutrition.get("carbs_g")   or 0) / srv or None
+        recipe.fiber_g   = (nutrition.get("fiber_g")   or 0) / srv or None
+        updated += 1
+
+    db.session.commit()
+    log.info("USDA_REFRESH: user=%s recipes_updated=%d skipped=%d", current_user.username, updated, skipped)
+    return jsonify({"recipes_updated": updated, "recipes_skipped": skipped})

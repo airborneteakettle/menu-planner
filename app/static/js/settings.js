@@ -83,6 +83,24 @@ export async function renderSettings(el) {
           </div>
         </div>
 
+        <!-- Refresh USDA nutrition card -->
+        <div class="card">
+          <div class="card-header bg-white fw-semibold">
+            <i class="bi bi-arrow-repeat me-2 text-success"></i>Refresh USDA Nutrition Data
+          </div>
+          <div class="card-body">
+            <p class="text-muted small mb-3">
+              Re-runs the USDA nutrition lookup for every recipe whose calories
+              were estimated from ingredients (not scraped from the recipe page).
+              Use this after improving the ingredient parser or USDA lookup logic.
+            </p>
+            <button class="btn btn-success" id="btn-refresh-usda">
+              <i class="bi bi-arrow-repeat me-1"></i>Refresh Nutrition
+            </button>
+          </div>
+          <div id="usda-refresh-results" class="card-body border-top d-none pt-3"></div>
+        </div>
+
         <!-- Sign out (mobile) -->
         <div class="d-lg-none mt-2">
           <a href="/logout" class="btn btn-outline-danger w-100">
@@ -94,6 +112,7 @@ export async function renderSettings(el) {
     </div>`;
 
   document.getElementById('btn-run-auto-tag').addEventListener('click', runAutoTag);
+  document.getElementById('btn-refresh-usda').addEventListener('click', refreshUsdaNutrition);
   document.getElementById('btn-change-password').addEventListener('click', changePassword);
   document.getElementById('btn-save-account').addEventListener('click', saveAccount);
   await Promise.all([loadHousehold(), loadAccount()]);
@@ -243,6 +262,33 @@ async function changePassword() {
     toast(e.message, 'danger');
   } finally {
     btn.disabled = false;
+  }
+}
+
+// ── Refresh USDA nutrition ────────────────────────────────────────────────────
+
+async function refreshUsdaNutrition() {
+  const btn     = document.getElementById('btn-refresh-usda');
+  const results = document.getElementById('usda-refresh-results');
+
+  btn.disabled = true;
+  btn.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span>Refreshing…`;
+  results.classList.add('d-none');
+
+  try {
+    const data = await api.settings.refreshUsdaNutrition();
+    results.innerHTML = `
+      <div class="d-flex gap-3 small">
+        <span><strong>${data.recipes_updated}</strong> recipe${data.recipes_updated !== 1 ? 's' : ''} updated</span>
+        ${data.recipes_skipped ? `<span class="text-muted"><strong>${data.recipes_skipped}</strong> skipped (no ingredients)</span>` : ''}
+      </div>`;
+    results.classList.remove('d-none');
+    toast(`Nutrition refreshed for ${data.recipes_updated} recipe${data.recipes_updated !== 1 ? 's' : ''}`);
+  } catch (e) {
+    toast(e.message, 'danger');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = `<i class="bi bi-arrow-repeat me-1"></i>Refresh Nutrition`;
   }
 }
 

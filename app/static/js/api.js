@@ -39,9 +39,9 @@ export const api = {
     share:   (id, userId) => req(`/menu/${id}/share`, { method: 'POST', body: JSON.stringify({ user_id: userId }) }),
     unshare: (id, userId) => req(`/menu/${id}/share/${userId}`, { method: 'DELETE' }),
     customItems: {
-      list:   ()        => req('/menu/custom-items'),
-      add:    (data)    => req('/menu/custom-items', { method: 'POST', body: JSON.stringify(data) }),
-      remove: (id)      => req(`/menu/custom-items/${id}`, { method: 'DELETE' }),
+      list:   (weekStart) => req(`/menu/custom-items?week_start=${weekStart || ''}`),
+      add:    (data)      => req('/menu/custom-items', { method: 'POST', body: JSON.stringify(data) }),
+      remove: (id)        => req(`/menu/custom-items/${id}`, { method: 'DELETE' }),
     },
     shoppingChecked: {
       get:   (weekStart)              => req(`/menu/shopping-checked?week_start=${weekStart}`),

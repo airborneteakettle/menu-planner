@@ -104,7 +104,7 @@ async function saveModalItem() {
   const qty      = document.getElementById('modal-qty-input').value.trim() || null;
   const category = document.getElementById('modal-category-select').value || 'Miscellaneous';
   try {
-    await api.menu.customItems.add({ name, quantity: qty, category });
+    await api.menu.customItems.add({ name, quantity: qty, category, week_start: _weekStart });
     bootstrap.Modal.getOrCreateInstance(document.getElementById('add-item-modal')).hide();
     await loadList();
   } catch (e) { toast(e.message, 'danger'); }
@@ -127,7 +127,7 @@ async function loadList() {
   try {
     const [data, custom, checkedArr] = await Promise.all([
       api.menu.shopping(start, end),
-      api.menu.customItems.list(),
+      api.menu.customItems.list(start),
       api.menu.shoppingChecked.get(start),
     ]);
     _checkedKeys = new Set(checkedArr);

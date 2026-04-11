@@ -277,23 +277,28 @@ def unshare_entry(entry_id, uid):
 
 @bp.route("/custom-items", methods=["GET"])
 def list_custom_items():
+    week_start = request.args.get("week_start", "")
     member_ids = _household_user_ids()
     items = CustomShoppingItem.query\
-        .filter(CustomShoppingItem.user_id.in_(member_ids))\
+        .filter(
+            CustomShoppingItem.user_id.in_(member_ids),
+            CustomShoppingItem.week_start == week_start,
+        )\
         .order_by(CustomShoppingItem.created_at).all()
     return jsonify([i.to_dict() for i in items])
 
 
 @bp.route("/custom-items", methods=["POST"])
 def add_custom_item():
-    data = request.get_json()
-    name = (data.get("name") or "").strip()
+    data       = request.get_json()
+    name       = (data.get("name") or "").strip()
     if not name:
         return jsonify({"error": "name is required"}), 400
-    qty      = (data.get("quantity") or "").strip() or None
-    category = (data.get("category") or "").strip() or "Miscellaneous"
-    item     = CustomShoppingItem(user_id=current_user.id, name=name,
-                                  quantity=qty, category=category)
+    week_start = (data.get("week_start") or "").strip()
+    qty        = (data.get("quantity") or "").strip() or None
+    category   = (data.get("category") or "").strip() or "Miscellaneous"
+    item       = CustomShoppingItem(user_id=current_user.id, week_start=week_start,
+                                    name=name, quantity=qty, category=category)
     db.session.add(item)
     db.session.commit()
     return jsonify(item.to_dict()), 201

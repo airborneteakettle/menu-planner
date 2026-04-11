@@ -17,6 +17,7 @@ class ShoppingCheckedItem(db.Model):
 class CustomShoppingItem(db.Model):
     id         = db.Column(db.Integer, primary_key=True)
     user_id    = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+    week_start = db.Column(db.String(10), nullable=False, server_default='')  # YYYY-MM-DD
     name       = db.Column(db.String(200), nullable=False)
     quantity   = db.Column(db.String(50))
     category   = db.Column(db.String(100), nullable=False, server_default='Miscellaneous')

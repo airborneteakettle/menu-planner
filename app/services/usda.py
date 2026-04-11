@@ -197,17 +197,20 @@ def _parse_qty_parts(quantity_str: str) -> tuple[float, str] | None:
     return None
 
 
-def _fetch_portion_grams(fdc_id: int, amount: float, unit: str, api_key: str) -> float | None:
+def _fetch_portion_grams(fdc_id: int, amount: float, unit: str, api_key: str, food_name: str = '') -> float | None:
     """
     Fetch USDA food portions and return gram weight for the given volume measure.
-    E.g. "1 cup almonds" → looks up "cup" in foodPortions → returns ~143 g.
-    Returns None if no matching portion is found.
+    Matches on measureUnit.name/abbr OR on the modifier field when the unit is
+    listed as 'undetermined' (common in SR Legacy / Foundation data).
+    When multiple cup portions exist (whole, sliced, slivered…) prefers the one
+    whose modifier best matches the ingredient description.
     """
     target = _UNIT_TO_USDA.get(unit)
     if not target:
         log.debug("USDA_PORTION_SKIP: unit=%r not in _UNIT_TO_USDA — no portion lookup", unit)
         return None
-    log.info("USDA_PORTION_FETCH: fdcId=%d amount=%s unit=%r target=%r", fdc_id, amount, unit, target)
+    log.info("USDA_PORTION_FETCH: fdcId=%d amount=%s unit=%r target=%r food_name=%r",
+             fdc_id, amount, unit, target, food_name)
     try:
         resp = requests.get(
             f"{USDA_BASE}/food/{fdc_id}",
@@ -221,20 +224,48 @@ def _fetch_portion_grams(fdc_id: int, amount: float, unit: str, api_key: str) ->
         portions = resp.json().get("foodPortions", [])
         log.info("USDA_PORTION_COUNT: fdcId=%d portions=%d available=%s",
                  fdc_id, len(portions),
-                 [(p.get("amount"), (p.get("measureUnit") or {}).get("name"), p.get("gramWeight"))
+                 [(p.get("amount"),
+                   (p.get("measureUnit") or {}).get("name"),
+                   p.get("modifier"),
+                   p.get("gramWeight"))
                   for p in portions])
+
+        candidates = []
         for p in portions:
-            mu   = p.get("measureUnit") or {}
-            name = (mu.get("name") or "").lower().strip()
-            abbr = (mu.get("abbreviation") or "").lower().strip()
+            mu       = p.get("measureUnit") or {}
+            name     = (mu.get("name")         or "").lower().strip()
+            abbr     = (mu.get("abbreviation") or "").lower().strip()
+            modifier = (p.get("modifier")      or "").lower().strip()
             gram_weight = float(p.get("gramWeight") or 0)
             p_amount    = float(p.get("amount")     or 1)
-            if target in (name, abbr) and gram_weight > 0:
-                result = gram_weight * amount / p_amount
-                log.info("USDA_PORTION_MATCH: unit=%r p_amount=%s gramWeight=%s → %.1fg",
-                         target, p_amount, gram_weight, result)
-                return result
-        log.warning("USDA_PORTION_NO_MATCH: fdcId=%d target=%r not found in portions", fdc_id, target)
+            if gram_weight <= 0:
+                continue
+            # Direct name/abbr match OR modifier starts with the target unit
+            # (SR Legacy uses name='undetermined' and stores the unit in modifier)
+            if target in (name, abbr) or (name == 'undetermined' and modifier.startswith(target)):
+                candidates.append((modifier, gram_weight, p_amount))
+
+        if not candidates:
+            log.warning("USDA_PORTION_NO_MATCH: fdcId=%d target=%r not found in portions", fdc_id, target)
+            return None
+
+        log.info("USDA_PORTION_CANDIDATES: %s", candidates)
+
+        # If multiple candidates, prefer the one whose modifier contains a word
+        # from the ingredient name (e.g. "sliced almonds" → "cup, sliced" = 92g)
+        chosen = candidates[0]
+        if len(candidates) > 1 and food_name:
+            keywords = [w for w in food_name.lower().split() if len(w) > 3]
+            for candidate in candidates:
+                if any(kw in candidate[0] for kw in keywords):
+                    chosen = candidate
+                    break
+
+        modifier, gram_weight, p_amount = chosen
+        result = gram_weight * amount / p_amount
+        log.info("USDA_PORTION_MATCH: chosen modifier=%r gramWeight=%s p_amount=%s → %.1fg",
+                 modifier, gram_weight, p_amount, result)
+        return result
     except Exception as e:
         log.exception("USDA_PORTION_EXCEPTION: fdcId=%d error=%s", fdc_id, e)
     return None
@@ -324,7 +355,7 @@ def lookup_ingredient_nutrition(ingredient: str, api_key: str) -> dict | None:
             qty_amount, qty_unit = parts
             log.info("USDA_QTY_PARTS: amount=%s unit=%r", qty_amount, qty_unit)
             if qty_unit in _UNIT_TO_USDA and qty_unit not in _LIQUID_UNITS:
-                portion_g = _fetch_portion_grams(food["fdcId"], qty_amount, qty_unit, api_key)
+                portion_g = _fetch_portion_grams(food["fdcId"], qty_amount, qty_unit, api_key, food_name)
                 if portion_g is not None:
                     log.info("USDA_PORTION_OVERRIDE: %.1fg (was %.1fg water-density)", portion_g, grams)
                     grams = portion_g

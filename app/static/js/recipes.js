@@ -742,6 +742,97 @@ function setupManualAddModal() {
     el.addEventListener('input', _updateSaveVisibility)
   );
   document.getElementById('ar-servings').addEventListener('input', _updatePerServingPreview);
+
+  document.getElementById('ar-paste-toggle').addEventListener('click', () => {
+    const area = document.getElementById('ar-paste-area');
+    const hidden = area.classList.toggle('d-none');
+    if (!hidden) setTimeout(() => document.getElementById('ar-paste-input').focus(), 50);
+  });
+  document.getElementById('ar-paste-parse').addEventListener('click', parsePastedIngredients);
+}
+
+// ── Ingredient paste parser ───────────────────────────────────────────────────
+
+const _UNIT_MAP = {
+  'teaspoon': 'tsp', 'teaspoons': 'tsp', 'tsp': 'tsp', 'tsps': 'tsp',
+  'tablespoon': 'tbsp', 'tablespoons': 'tbsp', 'tbsp': 'tbsp', 'tbsps': 'tbsp', 'tbs': 'tbsp',
+  'cup': 'cup', 'cups': 'cup',
+  'fluidounce': 'fl oz', 'fluidounces': 'fl oz', 'floz': 'fl oz',
+  'ounce': 'oz', 'ounces': 'oz', 'oz': 'oz',
+  'pound': 'lb', 'pounds': 'lb', 'lb': 'lb', 'lbs': 'lb',
+  'gram': 'g', 'grams': 'g',
+  'kilogram': 'kg', 'kilograms': 'kg', 'kg': 'kg',
+  'milliliter': 'ml', 'milliliters': 'ml', 'ml': 'ml',
+  'liter': 'L', 'liters': 'L',
+  'pinch': 'pinch', 'pinches': 'pinch',
+  'dash': 'dash', 'dashes': 'dash',
+  'clove': 'clove', 'cloves': 'clove',
+  'slice': 'slice', 'slices': 'slice',
+  'can': 'can', 'cans': 'can',
+  'bunch': 'bunch', 'bunches': 'bunch',
+  'sprig': 'sprig', 'sprigs': 'sprig',
+  'stalk': 'stalk', 'stalks': 'stalk',
+  'whole': 'whole',
+};
+
+const _UNICODE_FRACS = {'½':'1/2','¼':'1/4','¾':'3/4','⅓':'1/3','⅔':'2/3','⅛':'1/8','⅜':'3/8','⅝':'5/8','⅞':'7/8'};
+
+function parseIngredientLine(line) {
+  line = line.trim();
+  if (!line) return null;
+
+  // Normalize unicode fractions and fancy dashes in numbers
+  line = line.replace(/[½¼¾⅓⅔⅛⅜⅝⅞]/g, m => _UNICODE_FRACS[m] || m);
+
+  // Match leading number: mixed "1 1/2", fraction "1/2", decimal "1.5", integer "5"
+  let amount = '', rest = line;
+  const numM = line.match(/^(\d+\s+\d+\/\d+|\d+\/\d+|\d+\.?\d*)/);
+  if (numM) {
+    amount = numM[1].trim();
+    rest = line.slice(numM[0].length).trim();
+  }
+
+  // Match optional unit (handles "fluid ounce/ounces" as two-word unit)
+  let unit = '';
+  const unitM = rest.match(/^(fluid\s+ounces?|fluid\s+oz|[a-zA-Z]+)\s*/i);
+  if (unitM) {
+    const key = unitM[1].replace(/\s+/g, '').toLowerCase();
+    const mapped = _UNIT_MAP[key] || _UNIT_MAP[unitM[1].toLowerCase()];
+    if (mapped) {
+      unit = mapped;
+      rest = rest.slice(unitM[0].length).trim();
+    }
+  }
+
+  // Strip parentheticals like "(455 grams)" or "(16 oz)"
+  rest = rest.replace(/\([^)]*\)/g, ' ').replace(/\s{2,}/g, ' ').trim();
+  // Strip leading comma/dash left over after stripping parens
+  rest = rest.replace(/^[,\-–—]\s*/, '').trim();
+
+  return amount || rest ? { amount, unit, name: rest } : null;
+}
+
+function parsePastedIngredients() {
+  const text = document.getElementById('ar-paste-input').value;
+  const lines = text.split(/\r?\n/);
+  const parsed = lines.map(parseIngredientLine).filter(Boolean);
+  if (!parsed.length) return;
+
+  const container = document.getElementById('ar-ingredients');
+  // Clear placeholder blank rows if they're still empty
+  container.querySelectorAll('.ar-ingredient-row').forEach(row => {
+    const hasContent = row.querySelector('.ar-ing-amount').value.trim() ||
+                       row.querySelector('.ar-ing-name').value.trim();
+    if (!hasContent) row.remove();
+  });
+
+  for (const { amount, unit, name } of parsed) {
+    addIngredientRow(amount, unit, name);
+  }
+
+  // Hide paste area and clear it
+  document.getElementById('ar-paste-input').value = '';
+  document.getElementById('ar-paste-area').classList.add('d-none');
 }
 
 function addIngredientRow(amount = '', unit = '', name = '') {

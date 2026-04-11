@@ -367,31 +367,33 @@ function openRecipePicker(date, meal) {
             <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
           </div>
           <div class="modal-body p-2">
+            <div class="d-flex gap-2 mb-2">
+              <button class="btn btn-outline-secondary btn-sm flex-grow-1" id="btn-picker-adhoc">
+                <i class="bi bi-pencil-square me-1"></i>Ad Hoc Meal
+              </button>
+              ${_users.length ? `
+                <div class="dropdown">
+                  <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button"
+                          data-bs-toggle="dropdown">
+                    <i class="bi bi-people me-1"></i>Share with
+                  </button>
+                  <div class="dropdown-menu p-2" style="min-width:160px">
+                    ${_users.map(u => `
+                      <div class="form-check mb-1">
+                        <input class="form-check-input picker-share" type="checkbox"
+                               id="picker-share-${u.id}" data-user-id="${u.id}">
+                        <label class="form-check-label small" for="picker-share-${u.id}">
+                          ${u.username}
+                        </label>
+                      </div>`).join('')}
+                  </div>
+                </div>` : ''}
+            </div>
             <input class="form-control form-control-sm mb-2" id="picker-search"
-                   placeholder="Search recipes...">
+                   placeholder="Search all recipes...">
             <div id="picker-list" class="loading-state">
               <div class="spinner-border spinner-border-sm text-success"></div>
             </div>
-            <div class="border-top pt-2 mt-2">
-              <button class="btn btn-outline-secondary btn-sm w-100" id="btn-picker-adhoc">
-                <i class="bi bi-pencil-square me-1"></i>Add Ad Hoc Meal (no recipe)
-              </button>
-            </div>
-            ${_users.length ? `
-              <div class="border-top pt-2 mt-2">
-                <div class="small fw-semibold text-muted mb-1"
-                     style="font-size:.7rem;text-transform:uppercase;letter-spacing:.05em">
-                  Share with
-                </div>
-                ${_users.map(u => `
-                  <div class="form-check form-check-inline">
-                    <input class="form-check-input picker-share" type="checkbox"
-                           id="picker-share-${u.id}" data-user-id="${u.id}">
-                    <label class="form-check-label small" for="picker-share-${u.id}">
-                      ${u.username}
-                    </label>
-                  </div>`).join('')}
-              </div>` : ''}
           </div>
         </div>
       </div>
@@ -406,23 +408,37 @@ function openRecipePicker(date, meal) {
     const listEl = document.getElementById('picker-list');
     if (!listEl) return;
 
-    function renderList(items) {
-      listEl.innerHTML = items.length
-        ? items.map(r => `
-            <div class="d-flex align-items-center p-2 border-bottom picker-row"
-                 style="cursor:pointer" data-id="${r.id}" data-name="${r.name}">
-              <div class="flex-grow-1">
-                <div class="fw-medium small">${r.name}</div>
-                <div class="text-muted" style="font-size:.72rem">
-                  ${r.calories ? r.calories + ' kcal' : ''} ${r.meal_type || ''}
+    // Top 5 by rating (my_rating first, then avg, unrated last)
+    const top5 = [...recipes]
+      .sort((a, b) => (b.my_rating || b.rating || 0) - (a.my_rating || a.rating || 0))
+      .slice(0, 5);
+
+    function renderList(items, isSearch = false) {
+      const header = !isSearch
+        ? `<div class="text-muted mb-1 px-1" style="font-size:.7rem;text-transform:uppercase;letter-spacing:.05em">Top rated</div>`
+        : '';
+      listEl.innerHTML = header + (items.length
+        ? items.map(r => {
+            const stars = r.my_rating || r.rating
+              ? '★'.repeat(Math.round(r.my_rating || r.rating))
+              : '';
+            return `
+              <div class="d-flex align-items-center p-2 border-bottom picker-row"
+                   style="cursor:pointer" data-id="${r.id}" data-name="${r.name}">
+                <div class="flex-grow-1">
+                  <div class="fw-medium small">${r.name}</div>
+                  <div class="text-muted" style="font-size:.72rem">
+                    ${r.calories ? r.calories + ' kcal · ' : ''}${r.meal_type || ''}
+                    ${stars ? `<span style="color:#f59e0b">${stars}</span>` : ''}
+                  </div>
                 </div>
-              </div>
-              <i class="bi bi-plus-circle text-success"></i>
-            </div>`).join('')
-        : '<p class="text-muted text-center py-3 small">No recipes found.</p>';
+                <i class="bi bi-plus-circle text-success"></i>
+              </div>`;
+          }).join('')
+        : '<p class="text-muted text-center py-3 small">No recipes found.</p>');
 
       listEl.querySelectorAll('.picker-row').forEach(row =>
-        row.addEventListener('click', async () => {
+        row.addEventListener('click', () => {
           const shareWith = [...document.querySelectorAll('.picker-share:checked')]
             .map(cb => +cb.dataset.userId);
           modal.hide();
@@ -432,10 +448,14 @@ function openRecipePicker(date, meal) {
       );
     }
 
-    renderList(recipes);
+    renderList(top5);
     document.getElementById('picker-search').addEventListener('input', e => {
-      const q = e.target.value.toLowerCase();
-      renderList(q ? recipes.filter(r => r.name.toLowerCase().includes(q)) : recipes);
+      const q = e.target.value.trim().toLowerCase();
+      if (q) {
+        renderList(recipes.filter(r => r.name.toLowerCase().includes(q)), true);
+      } else {
+        renderList(top5);
+      }
     });
   });
 

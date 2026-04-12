@@ -1,3 +1,4 @@
+import math
 from collections import defaultdict
 import re
 
@@ -222,8 +223,14 @@ def generate_shopping_list(menu_entries) -> dict:
     Given a list of MenuEntry ORM objects, aggregate all ingredients
     and return them grouped by category.
 
-    Quantities are tracked per recipe; if the same recipe appears multiple
-    times in the week the quantity is shown with a ×N multiplier.
+    Ingredient quantities are scaled by the number of *batches* needed for
+    each recipe — not the raw number of menu entries.  One batch covers up to
+    recipe.servings planned servings.  If the household plans more servings
+    than a single batch yields, a second batch (and its ingredients) is added.
+
+    Example: recipe yields 4 servings, needs 1 lb chicken.
+      • 4 entries × 1 serving each  → 4 total servings → 1 batch → 1 lb chicken
+      • 5 entries × 1 serving each  → 5 total servings → 2 batches → 2 lb chicken
 
     Returns:
         {
@@ -231,13 +238,28 @@ def generate_shopping_list(menu_entries) -> dict:
             ...
         }
     """
+    # ── Step 1: compute batches needed per recipe ─────────────────────────────
+    # Group entries by recipe_id and sum planned servings.
+    entries_by_recipe: dict[int, list] = defaultdict(list)
+    for entry in menu_entries:
+        if entry.recipe_id:
+            entries_by_recipe[entry.recipe_id].append(entry)
+
+    batches_for: dict[int, int] = {}
+    for recipe_id, entries in entries_by_recipe.items():
+        recipe = entries[0].recipe
+        total_planned  = sum(e.servings or 1 for e in entries)
+        recipe_yield   = max(recipe.servings or 1, 1)
+        batches_for[recipe_id] = math.ceil(total_planned / recipe_yield)
+
+    # ── Step 2: build ingredient list scaled by batch count ───────────────────
     # ingredient_key → {name, category, per_recipe: {recipe_name: {qty, count}}}
     seen: dict[str, dict] = {}
 
-    for entry in menu_entries:
-        recipe = entry.recipe
-        if not recipe:
-            continue
+    for recipe_id, entries in entries_by_recipe.items():
+        recipe  = entries[0].recipe
+        batches = batches_for[recipe_id]
+
         for ing in recipe.ingredients:
             if ing.is_header:
                 continue
@@ -270,9 +292,9 @@ def generate_shopping_list(menu_entries) -> dict:
                     seen[key]["name"] = display_name
 
             pr = seen[key]["per_recipe"]
+            # Set once per recipe using the pre-computed batch count
             if recipe.name not in pr:
-                pr[recipe.name] = {"qty": qty, "count": 0}
-            pr[recipe.name]["count"] += 1
+                pr[recipe.name] = {"qty": qty, "count": batches}
 
     grouped: dict[str, list] = defaultdict(list)
     category_order = ["Produce", "Protein", "Dairy", "Grains & Pantry", "Frozen", "Other"]

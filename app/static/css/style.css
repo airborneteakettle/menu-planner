@@ -301,6 +301,8 @@ body {
   border-bottom: 1px solid #f0f0f0;
   font-size: .88rem;
   flex-wrap: nowrap;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .shop-item.checked .shop-item-name {

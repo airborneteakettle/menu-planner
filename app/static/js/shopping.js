@@ -242,10 +242,17 @@ function renderList(body, data, custom = []) {
     btn.addEventListener('click', () => openAddModal(btn.dataset.category));
   });
 
-  // Checkbox toggle
-  body.querySelectorAll('.shop-item input[type=checkbox]').forEach(cb => {
-    cb.addEventListener('change', async () => {
-      const row = cb.closest('.shop-item');
+  // Checkbox toggle — whole row is the tap target for mobile friendliness.
+  // A single handler on the row avoids the checkbox's own change event
+  // firing a second time and double-toggling on touch devices.
+  body.querySelectorAll('.shop-item').forEach(row => {
+    row.addEventListener('click', async (e) => {
+      if (e.target.closest('.btn-remove-custom')) return; // ignore delete button
+      const cb = row.querySelector('input[type=checkbox]');
+      if (!cb) return;
+      // If the checkbox itself was clicked the browser already toggled it;
+      // for clicks anywhere else on the row we toggle it manually.
+      if (e.target !== cb) cb.checked = !cb.checked;
       const key = row.dataset.key;
       cb.checked ? _checkedKeys.add(key) : _checkedKeys.delete(key);
       row.classList.toggle('checked', cb.checked);
@@ -260,6 +267,7 @@ function renderList(body, data, custom = []) {
   body.querySelector('#btn-clear-checks')?.addEventListener('click', async () => {
     body.querySelectorAll('.shop-item').forEach(row => {
       row.classList.remove('checked');
+      row.style.display = '';
       row.querySelector('input[type=checkbox]').checked = false;
     });
     _checkedKeys.clear();
@@ -278,7 +286,16 @@ function renderList(body, data, custom = []) {
 function applyCheckedVisibility() {
   const body = document.getElementById('shop-body');
   if (!body) return;
-  body.classList.toggle('hide-checked', !_showChecked);
+
+  // Set display directly on each item — more reliable than a CSS descendant
+  // rule on mobile (avoids iOS Safari repaint issues with display:none toggling).
+  body.querySelectorAll('.shop-item').forEach(row => {
+    if (row.classList.contains('checked')) {
+      row.style.display = _showChecked ? '' : 'none';
+    } else {
+      row.style.display = '';
+    }
+  });
 
   const btn  = document.getElementById('btn-toggle-checked');
   const icon = btn?.querySelector('i');

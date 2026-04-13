@@ -32,30 +32,47 @@ if [[ ! -f "$DB" ]]; then
   exit 1
 fi
 
-if ! command -v sqlite3 &>/dev/null; then
-  echo "Error: sqlite3 not found on PATH" >&2
-  exit 1
-fi
+# Use Python's built-in sqlite3 module — always available since the app runs on Python.
+db_exec() {
+  python3 -c "
+import sqlite3, sys
+db = sqlite3.connect(sys.argv[1])
+result = db.execute(sys.argv[2]).fetchone()
+db.commit()
+db.close()
+print(result[0] if result else 0)
+" "$DB" "$1"
+}
+
+db_run() {
+  python3 -c "
+import sqlite3, sys
+db = sqlite3.connect(sys.argv[1])
+db.execute(sys.argv[2])
+db.commit()
+db.close()
+" "$DB" "$1"
+}
 
 # ── Purge ─────────────────────────────────────────────────────────────────────
-before=$(sqlite3 "$DB" "SELECT COUNT(*) FROM usda_cache;")
+before=$(db_exec "SELECT COUNT(*) FROM usda_cache;")
 
 case "$MODE" in
   all)
-    sqlite3 "$DB" "DELETE FROM usda_cache;"
+    db_run "DELETE FROM usda_cache;"
     echo "Purged all $before cache entries."
     ;;
   search)
-    sqlite3 "$DB" "DELETE FROM usda_cache WHERE key = 'search:$TARGET';"
+    db_run "DELETE FROM usda_cache WHERE key = 'search:$TARGET';"
     echo "Purged search cache for '$TARGET'."
     ;;
   portion)
-    sqlite3 "$DB" "DELETE FROM usda_cache WHERE key = 'portion:$TARGET';"
+    db_run "DELETE FROM usda_cache WHERE key = 'portion:$TARGET';"
     echo "Purged portion cache for fdcId $TARGET."
     ;;
 esac
 
-after=$(sqlite3 "$DB" "SELECT COUNT(*) FROM usda_cache;")
+after=$(db_exec "SELECT COUNT(*) FROM usda_cache;")
 echo "Cache entries remaining: $after"
 
 # ── Restart service (flushes in-memory L1 cache) ─────────────────────────────

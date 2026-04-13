@@ -484,6 +484,13 @@ def lookup_ingredient_nutrition(ingredient: str, api_key: str) -> dict | None:
             sr_foods         = _search("SR Legacy") if remaining > 0 else []
             foods            = foundation_foods + sr_foods[:remaining]
 
+            # Branded fallback: only query when Foundation + SR Legacy are empty.
+            # Branded foods are last-resort because they have inconsistent naming.
+            if not foods:
+                branded = _search("Branded")
+                foods   = branded
+                log.info("USDA_BRANDED_FALLBACK: food_name=%r branded_count=%d", food_name, len(branded))
+
             _db_set(f"search:{food_name}", foods)
             with _cache_lock:
                 _search_cache[food_name] = foods
@@ -493,10 +500,9 @@ def lookup_ingredient_nutrition(ingredient: str, api_key: str) -> dict | None:
         if not foods:
             log.warning("USDA_NO_RESULTS: food_name=%r", food_name)
             return None
-        # Rank: Foundation first, SR Legacy second; within each prefer results
-        # whose description closely matches the query, then prefer entries that
-        # have a calories value in the search snippet.
-        _DT_RANK = {'Foundation': 0, 'SR Legacy': 1}
+        # Rank: Foundation first, SR Legacy second, Branded last; within each
+        # prefer results whose description closely matches the query.
+        _DT_RANK = {'Foundation': 0, 'SR Legacy': 1, 'Branded': 2}
 
         def _has_calories(f):
             return any(
@@ -604,7 +610,9 @@ def search_ingredient_candidates(
     Used by the override picker in the UI.
 
     - offset=0  → uses existing search cache if available (Foundation-priority order)
-    - offset>0  → fetches page 2+ from USDA in parallel (Foundation + SR Legacy)
+    - offset>0  → fetches page 2+ from USDA in parallel (Foundation + SR Legacy + Branded)
+
+    Result order: Foundation → SR Legacy → Branded (least preferred last).
     """
     quantity_str, food_name = parse_ingredient(ingredient)
     grams = quantity_to_grams(quantity_str)
@@ -643,14 +651,20 @@ def search_ingredient_candidates(
                 log.warning("USDA_SEARCH_CANDIDATE_ERROR: data_type=%s error=%s", data_type, e)
                 return []
 
-        with ThreadPoolExecutor(max_workers=2) as pool:
+        with ThreadPoolExecutor(max_workers=3) as pool:
             f_fut  = pool.submit(_search, "Foundation")
             sr_fut = pool.submit(_search, "SR Legacy")
+            br_fut = pool.submit(_search, "Branded")
             f_foods  = f_fut.result()
             sr_foods = sr_fut.result()
+            br_foods = br_fut.result()
 
         seen_ids = {f.get("fdcId") for f in f_foods}
-        fresh = f_foods + [f for f in sr_foods if f.get("fdcId") not in seen_ids]
+        unique_sr = [f for f in sr_foods if f.get("fdcId") not in seen_ids]
+        seen_ids.update(f.get("fdcId") for f in unique_sr)
+        unique_br = [f for f in br_foods if f.get("fdcId") not in seen_ids]
+        # Foundation first → SR Legacy → Branded (least preferred)
+        fresh = f_foods + unique_sr + unique_br
 
         if offset == 0:
             all_foods = fresh

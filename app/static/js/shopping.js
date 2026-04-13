@@ -7,6 +7,7 @@ let _categories    = []; // recipe categories for the current week
 let _checkedKeys   = new Set();
 let _weekStart     = '';
 let _showChecked   = false; // checked items hidden by default
+let _saving        = false; // guard against double-tap / Enter+click on mobile
 
 export async function renderShopping(el) {
   _el = el;
@@ -99,15 +100,27 @@ function openAddModal(prefilledCategory = '') {
 }
 
 async function saveModalItem() {
+  if (_saving) return;
   const name = document.getElementById('modal-name-input').value.trim();
   if (!name) { document.getElementById('modal-name-input').focus(); return; }
+  if (!_weekStart) { toast('Week not loaded yet — please wait', 'warning'); return; }
+
   const qty      = document.getElementById('modal-qty-input').value.trim() || null;
   const category = document.getElementById('modal-category-select').value || 'Miscellaneous';
+  const btn      = document.getElementById('modal-save-btn');
+
+  _saving = true;
+  btn.disabled = true;
   try {
     await api.menu.customItems.add({ name, quantity: qty, category, week_start: _weekStart });
     bootstrap.Modal.getOrCreateInstance(document.getElementById('add-item-modal')).hide();
     await loadList();
-  } catch (e) { toast(e.message, 'danger'); }
+  } catch (e) {
+    toast(e.message, 'danger');
+  } finally {
+    _saving = false;
+    btn.disabled = false;
+  }
 }
 
 // ── Load / render ──────────────────────────────────────────────────────────────

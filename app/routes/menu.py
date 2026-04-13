@@ -295,6 +295,8 @@ def add_custom_item():
     if not name:
         return jsonify({"error": "name is required"}), 400
     week_start = (data.get("week_start") or "").strip()
+    if not week_start:
+        return jsonify({"error": "week_start is required"}), 400
     qty        = (data.get("quantity") or "").strip() or None
     category   = (data.get("category") or "").strip() or "Miscellaneous"
     item       = CustomShoppingItem(user_id=current_user.id, week_start=week_start,

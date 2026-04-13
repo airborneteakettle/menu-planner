@@ -1160,12 +1160,22 @@ function openIngredientPicker(rowIndex, ingredient) {
   _pickerOffset     = 0;
   _pickerCandidates = [];
 
-  const label = document.getElementById('picker-ingredient-label');
-  if (label) label.textContent = ingredient;
+  // Render picker inline inside the nutrition panel — avoids z-index issues
+  // with Bootstrap modals (offcanvas sits behind the modal backdrop).
+  const panel = document.getElementById('ar-nutrition-panel');
+  panel.innerHTML = `
+    <div class="d-flex align-items-center gap-2 mb-2 border-bottom pb-2">
+      <button class="btn btn-sm btn-outline-secondary flex-shrink-0" id="picker-back-btn">
+        <i class="bi bi-arrow-left me-1"></i>Back
+      </button>
+      <span class="small fw-medium text-truncate">${escHtml(ingredient)}</span>
+    </div>
+    <div id="picker-body">
+      <div class="loading-state py-3"><div class="spinner-border spinner-border-sm text-success"></div></div>
+    </div>`;
+  panel.classList.remove('d-none');
 
-  bootstrap.Offcanvas.getOrCreateInstance(
-    document.getElementById('ingredient-picker')
-  ).show();
+  document.getElementById('picker-back-btn').addEventListener('click', renderAndWireBreakdown);
 
   loadPickerPage(0);
 }
@@ -1186,9 +1196,7 @@ async function loadPickerPage(offset) {
       btn.addEventListener('click', () => {
         const candidate = _pickerCandidates[+btn.dataset.idx];
         applyNutritionOverride(_pickerRowIdx, candidate);
-        bootstrap.Offcanvas.getInstance(
-          document.getElementById('ingredient-picker')
-        )?.hide();
+        // applyNutritionOverride calls renderAndWireBreakdown which replaces the panel
       });
     });
 

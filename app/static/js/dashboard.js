@@ -1,6 +1,7 @@
 import { api }                         from './api.js';
 import { today, formatDateLong, fmt, MEAL_TYPES } from './utils.js';
 import { openRecipeModal }              from './recipes.js';
+import { openAdHocModal }              from './planner.js';
 
 let _el = null;
 let _weightChart = null;
@@ -312,8 +313,9 @@ function renderBody(el, summary, weekly, weightEntries, goalData) {
         <div class="flex-grow-1 d-flex flex-wrap gap-1">
           ${entries.length
             ? entries.map(e => `
-                <span class="entry-chip" data-recipe-id="${e.recipe_id}">
-                  ${e.recipe_name}
+                <span class="entry-chip"
+                      ${e.is_adhoc ? `data-entry='${JSON.stringify(e)}'` : `data-recipe-id="${e.recipe_id}"`}>
+                  ${e.is_adhoc ? '<i class="bi bi-pencil-square me-1 text-muted" style="font-size:.7rem"></i>' : ''}${e.recipe_name}
                   <small class="text-muted">(${e.servings}x)</small>
                 </span>`).join('')
             : '<span class="text-muted small fst-italic">Nothing planned</span>'}
@@ -370,9 +372,17 @@ function renderBody(el, summary, weekly, weightEntries, goalData) {
     </div>`;
 
   // Wire meal chips
-  el.querySelectorAll('.entry-chip[data-recipe-id]').forEach(chip =>
-    chip.addEventListener('click', () => openRecipeModal(+chip.dataset.recipeId))
-  );
+  el.querySelectorAll('.entry-chip[data-recipe-id]').forEach(chip => {
+    const id = +chip.dataset.recipeId;
+    if (id) chip.addEventListener('click', () => openRecipeModal(id));
+  });
+  el.querySelectorAll('.entry-chip[data-entry]').forEach(chip => {
+    const entry = JSON.parse(chip.dataset.entry);
+    chip.addEventListener('click', () => {
+      window._addMenuCallback = () => window.refreshView();
+      openAdHocModal(entry.date, entry.meal_type, entry);
+    });
+  });
 
   // Wire weight log form
   document.getElementById('weight-log-form').addEventListener('submit', async e => {

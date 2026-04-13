@@ -578,8 +578,33 @@ def lookup_ingredient_nutrition(ingredient: str, api_key: str) -> dict | None:
             else:
                 log.info("USDA_QTY_UNIT_SKIP: unit=%r — not a volume unit or is liquid, keeping %.1fg", qty_unit, grams)
 
-    # Bare-count fallback: "1 apple", "2 shallots" — use the food's own serving size
-    # rather than the 100 g default so whole items aren't wildly over-estimated.
+    # ── Branded RACC override ────────────────────────────────────────────
+    # For Branded foods, scale by servingSize (RACC) rather than 100 g/item.
+    # Applies when:
+    #   • quantity is a bare count ("2") — overrides the 100g-per-item default
+    #   • quantity unit is unrecognised (e.g. "2 pieces") — grams is None
+    #   • no quantity at all — default to 1 × RACC instead of returning per-100g
+    if food.get("dataType") == "Branded":
+        racc_g = _usda_serving_grams(food)
+        if racc_g:
+            if quantity_str:
+                parts = _parse_qty_parts(quantity_str)
+                if parts:
+                    qty_amount, qty_unit = parts
+                    # bare count (qty_unit == '') OR unrecognised count unit
+                    if qty_unit == '' or (qty_unit and qty_unit not in _UNIT_GRAMS
+                                          and qty_unit not in _UNIT_TO_USDA):
+                        new_grams = qty_amount * racc_g
+                        log.info("USDA_BRANDED_RACC: qty=%s × racc=%.1fg → %.1fg",
+                                 qty_amount, racc_g, new_grams)
+                        grams = new_grams
+            elif grams is None:
+                # no quantity at all → default to 1 RACC
+                grams = racc_g
+                log.info("USDA_BRANDED_RACC_DEFAULT: no qty → 1 × racc=%.1fg", racc_g)
+
+    # Bare-count fallback for non-branded foods: "1 apple", "2 shallots" — use the
+    # food's own serving size rather than the 100 g default.
     if grams is None and quantity_str:
         bare = re.match(r"^([\d\s./½¼¾⅓⅔⅛]+)$", quantity_str.strip())
         if bare:
@@ -680,20 +705,41 @@ def search_ingredient_candidates(
     candidates = []
     for food in page_foods:
         per_100g = _parse_nutrients(food.get("foodNutrients", []))
-        if grams is not None:
-            scale = grams / 100.0
+        food_grams = grams  # ingredient-level grams (may be overridden per food)
+        racc_g = None
+
+        # For Branded foods, prefer RACC (servingSize) over 100g-per-item default
+        if food.get("dataType") == "Branded":
+            racc_g = _usda_serving_grams(food)
+            if racc_g:
+                if food_grams is None:
+                    # No recognised quantity → show nutrition per 1 RACC
+                    food_grams = racc_g
+                elif quantity_str:
+                    parts = _parse_qty_parts(quantity_str)
+                    if parts:
+                        qty_amount, qty_unit = parts
+                        # bare count or unrecognised count unit
+                        if qty_unit == '' or (qty_unit and qty_unit not in _UNIT_GRAMS
+                                              and qty_unit not in _UNIT_TO_USDA):
+                            food_grams = qty_amount * racc_g
+
+        if food_grams is not None:
+            scale = food_grams / 100.0
             nutrition = {k: round(v * scale, 1) for k, v in per_100g.items()}
         else:
             nutrition = {k: round(v, 1) for k, v in per_100g.items()}
+
         candidates.append({
-            "fdcId":       food.get("fdcId"),
-            "description": food.get("description", ""),
-            "dataType":    food.get("dataType", ""),
-            "calories":    nutrition.get("calories"),
-            "protein_g":   nutrition.get("protein_g"),
-            "carbs_g":     nutrition.get("carbs_g"),
-            "fat_g":       nutrition.get("fat_g"),
-            "fiber_g":     nutrition.get("fiber_g"),
+            "fdcId":        food.get("fdcId"),
+            "description":  food.get("description", ""),
+            "dataType":     food.get("dataType", ""),
+            "serving_size_g": round(racc_g, 1) if racc_g else None,
+            "calories":     nutrition.get("calories"),
+            "protein_g":    nutrition.get("protein_g"),
+            "carbs_g":      nutrition.get("carbs_g"),
+            "fat_g":        nutrition.get("fat_g"),
+            "fiber_g":      nutrition.get("fiber_g"),
         })
 
     return {

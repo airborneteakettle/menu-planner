@@ -70,12 +70,18 @@ def daily_summary():
     totals = {"calories": 0.0, "protein_g": 0.0, "carbs_g": 0.0, "fat_g": 0.0, "fiber_g": 0.0}
     for entry in entries:
         recipe = entry.recipe
-        if not recipe:
-            continue
-        # Nutrition values are stored per-serving; multiply by how many servings eaten
         factor = entry.servings or 1
-        for k in totals:
-            totals[k] += (getattr(recipe, k) or 0) * factor
+        if recipe:
+            # Nutrition values are stored per-serving; multiply by how many servings eaten
+            for k in totals:
+                totals[k] += (getattr(recipe, k) or 0) * factor
+        elif entry.is_adhoc:
+            # Ad hoc entries store absolute nutrition (not per-serving)
+            totals["calories"]  += (entry.adhoc_calories  or 0) * factor
+            totals["protein_g"] += (entry.adhoc_protein_g or 0) * factor
+            totals["carbs_g"]   += (entry.adhoc_carbs_g   or 0) * factor
+            totals["fat_g"]     += (entry.adhoc_fat_g     or 0) * factor
+            totals["fiber_g"]   += (entry.adhoc_fiber_g   or 0) * factor
 
     goal      = DietGoal.query.filter_by(user_id=current_user.id)\
                               .order_by(DietGoal.id.desc()).first()
@@ -117,11 +123,16 @@ def weekly_summary():
 
     for entry in entries:
         recipe = entry.recipe
-        if not recipe:
-            continue
         factor = entry.servings or 1
-        for macro in MACROS:
-            day_map[entry.date][macro] += (getattr(recipe, macro) or 0) * factor
+        if recipe:
+            for macro in MACROS:
+                day_map[entry.date][macro] += (getattr(recipe, macro) or 0) * factor
+        elif entry.is_adhoc:
+            day_map[entry.date]["calories"]  += (entry.adhoc_calories  or 0) * factor
+            day_map[entry.date]["protein_g"] += (entry.adhoc_protein_g or 0) * factor
+            day_map[entry.date]["carbs_g"]   += (entry.adhoc_carbs_g   or 0) * factor
+            day_map[entry.date]["fat_g"]     += (entry.adhoc_fat_g     or 0) * factor
+            day_map[entry.date]["fiber_g"]   += (entry.adhoc_fiber_g   or 0) * factor
 
     days = [
         {"date": d.isoformat(), "day": d.strftime("%a"),
@@ -223,6 +234,31 @@ def add_entry():
         log.info("MENU_ADD_ADHOC: user=%s entry_id=%d name=%r date=%s meal=%s",
                  current_user.username, entry.id, entry.adhoc_name, entry.date, entry.meal_type)
     return jsonify(entry.to_dict(viewer_id=current_user.id)), 201
+
+
+@bp.route("/<int:entry_id>", methods=["PATCH"])
+def update_entry(entry_id):
+    entry = MenuEntry.query.filter_by(id=entry_id, user_id=current_user.id).first_or_404()
+    data  = request.get_json() or {}
+    if "adhoc_name" in data:
+        entry.adhoc_name      = (data.get("adhoc_name") or "").strip() or "Ad hoc meal"
+    if "adhoc_calories" in data:
+        entry.adhoc_calories  = data.get("adhoc_calories")
+    if "adhoc_protein_g" in data:
+        entry.adhoc_protein_g = data.get("adhoc_protein_g")
+    if "adhoc_carbs_g" in data:
+        entry.adhoc_carbs_g   = data.get("adhoc_carbs_g")
+    if "adhoc_fat_g" in data:
+        entry.adhoc_fat_g     = data.get("adhoc_fat_g")
+    if "adhoc_fiber_g" in data:
+        entry.adhoc_fiber_g   = data.get("adhoc_fiber_g")
+    if "date" in data:
+        entry.date = date.fromisoformat(data["date"])
+    if "meal_type" in data:
+        entry.meal_type = data["meal_type"]
+    db.session.commit()
+    log.info("MENU_UPDATE_ADHOC: user=%s entry_id=%d", current_user.username, entry.id)
+    return jsonify(entry.to_dict(viewer_id=current_user.id))
 
 
 @bp.route("/<int:entry_id>", methods=["DELETE"])

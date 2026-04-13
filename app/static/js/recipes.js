@@ -1277,12 +1277,17 @@ function renderPickerPage(data) {
   const rows = candidates.map((c, idx) => {
     const dtClass = c.dataType === 'Foundation'
       ? 'bg-success-subtle text-success-emphasis'
-      : 'bg-secondary-subtle text-secondary-emphasis';
+      : c.dataType === 'Branded'
+        ? 'bg-warning-subtle text-warning-emphasis'
+        : 'bg-secondary-subtle text-secondary-emphasis';
     const calStr  = c.calories  != null ? Math.round(c.calories)  + ' kcal' : '—';
     const protStr = c.protein_g != null ? c.protein_g + 'g prot'  : '';
     const carbStr = c.carbs_g   != null ? c.carbs_g   + 'g carbs' : '';
     const fatStr  = c.fat_g     != null ? c.fat_g     + 'g fat'   : '';
     const macros  = [calStr, protStr, carbStr, fatStr].filter(Boolean).join(' · ');
+    const servingLabel = c.serving_size_g
+      ? `<span class="text-muted" style="font-size:.65rem">${c.serving_size_g}g/serving</span>`
+      : '';
 
     return `
       <div class="picker-candidate border-bottom px-3 py-2">
@@ -1291,6 +1296,7 @@ function renderPickerPage(data) {
             <div class="fw-medium lh-sm picker-desc">${escHtml(c.description)}</div>
             <div class="d-flex align-items-center gap-2 mt-1 flex-wrap">
               <span class="badge ${dtClass}" style="font-size:.6rem">${escHtml(c.dataType)}</span>
+              ${servingLabel}
               <span class="text-muted picker-macros">${escHtml(macros)}</span>
             </div>
           </div>

@@ -35,6 +35,7 @@ export const api = {
     week:     ()        => req('/menu/week'),
     range:    (s, e)    => req(`/menu/?start=${s}&end=${e}`),
     add:      (data)    => req('/menu/', { method: 'POST', body: JSON.stringify(data) }),
+    update:   (id, data) => req(`/menu/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
     remove:   (id)      => req(`/menu/${id}`, { method: 'DELETE' }),
     summary:  (date)    => req(`/menu/daily-summary?date=${date}`),
     weeklySummary: (start) => req(`/menu/weekly-summary${start ? '?start=' + start : ''}`),

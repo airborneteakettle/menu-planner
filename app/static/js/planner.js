@@ -541,6 +541,9 @@ function renderAdhocPickerPage(data) {
     const carbStr = c.carbs_g   != null ? c.carbs_g   + 'g carbs' : '';
     const fatStr  = c.fat_g     != null ? c.fat_g     + 'g fat'   : '';
     const macros  = [calStr, protStr, carbStr, fatStr].filter(Boolean).join(' · ');
+    const servingLabel = c.serving_size_g
+      ? `<span class="text-muted" style="font-size:.65rem">${c.serving_size_g}g/serving</span>`
+      : '';
     return `
       <div class="border-bottom px-3 py-2" style="transition:background .1s" onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background=''">
         <div class="d-flex align-items-start gap-2">
@@ -548,6 +551,7 @@ function renderAdhocPickerPage(data) {
             <div class="fw-medium lh-sm" style="font-size:.82rem">${_adhocEscHtml(c.description)}</div>
             <div class="d-flex align-items-center gap-2 mt-1 flex-wrap">
               <span class="badge ${dtClass}" style="font-size:.6rem">${_adhocEscHtml(c.dataType)}</span>
+              ${servingLabel}
               <span class="text-muted" style="font-size:.72rem">${_adhocEscHtml(macros)}</span>
             </div>
           </div>
@@ -589,15 +593,19 @@ function applyAdhocSelection(candidate) {
 
 // ── Ad Hoc Meal Modal ─────────────────────────────────────────────────────────
 
-function openAdHocModal(date, meal) {
-  document.getElementById('adhoc-name').value     = '';
-  document.getElementById('adhoc-date').value     = date;
-  document.getElementById('adhoc-meal-type').value = meal || 'dinner';
-  document.getElementById('adhoc-calories').value = '';
-  document.getElementById('adhoc-protein').value  = '';
-  document.getElementById('adhoc-carbs').value    = '';
-  document.getElementById('adhoc-fat').value      = '';
-  document.getElementById('adhoc-fiber').value    = '';
+let _adhocEditId = null;  // null = create mode; entry id = edit mode
+
+export function openAdHocModal(date, meal, entry = null) {
+  _adhocEditId = entry ? entry.id : null;
+  const n = entry?.nutrition || {};
+  document.getElementById('adhoc-name').value      = entry?.recipe_name || '';
+  document.getElementById('adhoc-date').value      = entry?.date || date;
+  document.getElementById('adhoc-meal-type').value = entry?.meal_type || meal || 'dinner';
+  document.getElementById('adhoc-calories').value  = n.calories  != null ? n.calories  : '';
+  document.getElementById('adhoc-protein').value   = n.protein_g != null ? n.protein_g : '';
+  document.getElementById('adhoc-carbs').value     = n.carbs_g   != null ? n.carbs_g   : '';
+  document.getElementById('adhoc-fat').value       = n.fat_g     != null ? n.fat_g     : '';
+  document.getElementById('adhoc-fiber').value     = n.fiber_g   != null ? n.fiber_g   : '';
   document.getElementById('adhoc-error').classList.add('d-none');
   document.getElementById('adhoc-picker-panel').classList.add('d-none');
   // Reset lookup button to default state
@@ -605,6 +613,12 @@ function openAdHocModal(date, meal) {
   lookupBtn.innerHTML = '<i class="bi bi-search"></i>';
   lookupBtn.className  = 'btn btn-outline-secondary';
   lookupBtn.title      = 'Look up in USDA database';
+  // Update submit button label and modal title for edit vs create
+  document.getElementById('btn-adhoc-submit').innerHTML =
+    `<span class="spinner-border spinner-border-sm d-none me-1" id="adhoc-spinner"></span>` +
+    (_adhocEditId ? 'Save Changes' : 'Add to Planner');
+  document.querySelector('#modal-adhoc-meal .modal-title').innerHTML =
+    `<i class="bi bi-pencil-square me-1"></i>${_adhocEditId ? 'Edit Ad Hoc Meal' : 'Ad Hoc Meal'}`;
   bootstrap.Modal.getOrCreateInstance(document.getElementById('modal-adhoc-meal')).show();
   setTimeout(() => document.getElementById('adhoc-name').focus(), 300);
 }
@@ -646,16 +660,21 @@ document.addEventListener('DOMContentLoaded', () => {
     spinner.classList.remove('d-none');
     submitBtn.disabled = true;
     try {
-      await api.menu.add({
-        date:           document.getElementById('adhoc-date').value,
-        meal_type:      document.getElementById('adhoc-meal-type').value,
-        adhoc_name:     name,
-        adhoc_calories: num('adhoc-calories'),
+      const payload = {
+        date:            document.getElementById('adhoc-date').value,
+        meal_type:       document.getElementById('adhoc-meal-type').value,
+        adhoc_name:      name,
+        adhoc_calories:  num('adhoc-calories'),
         adhoc_protein_g: num('adhoc-protein'),
-        adhoc_carbs_g:  num('adhoc-carbs'),
-        adhoc_fat_g:    num('adhoc-fat'),
-        adhoc_fiber_g:  num('adhoc-fiber'),
-      });
+        adhoc_carbs_g:   num('adhoc-carbs'),
+        adhoc_fat_g:     num('adhoc-fat'),
+        adhoc_fiber_g:   num('adhoc-fiber'),
+      };
+      if (_adhocEditId) {
+        await api.menu.update(_adhocEditId, payload);
+      } else {
+        await api.menu.add(payload);
+      }
       bootstrap.Modal.getOrCreateInstance(document.getElementById('modal-adhoc-meal')).hide();
       if (typeof window._addMenuCallback === 'function') window._addMenuCallback();
     } catch (e) {

@@ -44,6 +44,27 @@
 
 <div id="toast-container" class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index:9999"></div>
 
+<!-- Offcanvas: USDA Ingredient Picker -->
+<div class="offcanvas offcanvas-end" id="ingredient-picker" tabindex="-1"
+     aria-labelledby="picker-title" style="width:min(420px,100vw)">
+  <div class="offcanvas-header border-bottom py-2">
+    <div class="overflow-hidden">
+      <h6 class="offcanvas-title mb-0" id="picker-title">
+        <i class="bi bi-search me-1"></i>Choose Food Match
+      </h6>
+      <div class="text-muted text-truncate" id="picker-ingredient-label"
+           style="font-size:.78rem;max-width:320px"></div>
+    </div>
+    <button type="button" class="btn-close ms-2 flex-shrink-0"
+            data-bs-dismiss="offcanvas" aria-label="Close"></button>
+  </div>
+  <div class="offcanvas-body p-0 d-flex flex-column" style="overflow:hidden">
+    <div id="picker-body" class="flex-grow-1 overflow-y-auto">
+      <div class="loading-state"><div class="spinner-border text-success"></div></div>
+    </div>
+  </div>
+</div>
+
 <!-- Modal: Manual Add Recipe -->
 <div class="modal fade" id="modal-add-recipe" tabindex="-1">
   <div class="modal-dialog modal-lg modal-dialog-scrollable">

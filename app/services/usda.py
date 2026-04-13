@@ -593,6 +593,106 @@ def lookup_ingredient_nutrition(ingredient: str, api_key: str) -> dict | None:
     return per_100g
 
 
+def search_ingredient_candidates(
+    ingredient: str,
+    api_key: str,
+    offset: int = 0,
+    limit: int = 10,
+) -> dict:
+    """
+    Return USDA food candidates for an ingredient with pre-scaled nutrition.
+    Used by the override picker in the UI.
+
+    - offset=0  → uses existing search cache if available (Foundation-priority order)
+    - offset>0  → fetches page 2+ from USDA in parallel (Foundation + SR Legacy)
+    """
+    quantity_str, food_name = parse_ingredient(ingredient)
+    grams = quantity_to_grams(quantity_str)
+
+    # Separate "all-results" cache so the nutrition-estimation cache is unaffected
+    all_cache_key = f"search_all:{food_name}"
+
+    with _cache_lock:
+        all_foods = _search_cache.get(all_cache_key)
+    if all_foods is None:
+        all_foods = _db_get(all_cache_key)
+        if all_foods is not None:
+            with _cache_lock:
+                _search_cache[all_cache_key] = all_foods
+
+    if all_foods is None or offset + limit > len(all_foods):
+        # Need to fetch from USDA.  pageNumber starts at 1; page 2 = items 10-19, etc.
+        page_num = max(1, offset // 10 + 1)
+
+        def _search(data_type: str) -> list:
+            try:
+                r = requests.get(
+                    f"{USDA_BASE}/foods/search",
+                    params=[
+                        ("query",      food_name),
+                        ("pageSize",   10),
+                        ("pageNumber", page_num),
+                        ("api_key",    api_key),
+                        ("dataType",   data_type),
+                    ],
+                    timeout=10,
+                )
+                r.raise_for_status()
+                return r.json().get("foods", [])
+            except Exception as e:
+                log.warning("USDA_SEARCH_CANDIDATE_ERROR: data_type=%s error=%s", data_type, e)
+                return []
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            f_fut  = pool.submit(_search, "Foundation")
+            sr_fut = pool.submit(_search, "SR Legacy")
+            f_foods  = f_fut.result()
+            sr_foods = sr_fut.result()
+
+        seen_ids = {f.get("fdcId") for f in f_foods}
+        fresh = f_foods + [f for f in sr_foods if f.get("fdcId") not in seen_ids]
+
+        if offset == 0:
+            all_foods = fresh
+        else:
+            all_foods = (all_foods or []) + fresh
+
+        _db_set(all_cache_key, all_foods)
+        with _cache_lock:
+            _search_cache[all_cache_key] = all_foods
+
+    page_foods = all_foods[offset:offset + limit]
+
+    candidates = []
+    for food in page_foods:
+        per_100g = _parse_nutrients(food.get("foodNutrients", []))
+        if grams is not None:
+            scale = grams / 100.0
+            nutrition = {k: round(v * scale, 1) for k, v in per_100g.items()}
+        else:
+            nutrition = {k: round(v, 1) for k, v in per_100g.items()}
+        candidates.append({
+            "fdcId":       food.get("fdcId"),
+            "description": food.get("description", ""),
+            "dataType":    food.get("dataType", ""),
+            "calories":    nutrition.get("calories"),
+            "protein_g":   nutrition.get("protein_g"),
+            "carbs_g":     nutrition.get("carbs_g"),
+            "fat_g":       nutrition.get("fat_g"),
+            "fiber_g":     nutrition.get("fiber_g"),
+        })
+
+    return {
+        "food_name":    food_name,
+        "quantity_str": quantity_str,
+        "grams":        round(grams, 1) if grams else None,
+        "offset":       offset,
+        "total":        len(all_foods),
+        "has_more":     len(all_foods) > offset + limit,
+        "candidates":   candidates,
+    }
+
+
 def estimate_recipe_nutrition(ingredients: list[str], api_key: str) -> dict:
     """
     Sum scaled nutrition across all ingredient strings.

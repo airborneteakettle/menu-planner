@@ -6,7 +6,7 @@ from app.models.recipe import Recipe, Ingredient, Tag, RecipeRating
 from app.models.goals import DietGoal
 from app.services.recipe_importer import import_recipe_from_url, title_from_url
 from app.services.auto_tags import apply_auto_tags
-from app.services.usda import estimate_recipe_nutrition, lookup_ingredient_nutrition, parse_ingredient
+from app.services.usda import estimate_recipe_nutrition, lookup_ingredient_nutrition, parse_ingredient, search_ingredient_candidates
 
 bp = Blueprint("recipes", __name__)
 log = logging.getLogger(__name__)
@@ -88,6 +88,23 @@ def estimate_nutrition():
         "totals":    {k: round(v, 1) for k, v in totals.items()},
         "breakdown": breakdown,
     })
+
+
+@bp.route("/search-ingredient", methods=["POST"])
+def search_ingredient():
+    """
+    POST /api/recipes/search-ingredient
+    Body: { "ingredient": "2 cups chicken breast", "offset": 0 }
+    Returns top N USDA candidates with pre-scaled nutrition for the picker UI.
+    """
+    data       = request.get_json() or {}
+    ingredient = (data.get("ingredient") or "").strip()
+    offset     = max(0, int(data.get("offset") or 0))
+    if not ingredient:
+        return jsonify({"error": "ingredient is required"}), 400
+    api_key = current_app.config.get("USDA_API_KEY", "DEMO_KEY")
+    result  = search_ingredient_candidates(ingredient, api_key, offset=offset)
+    return jsonify(result)
 
 
 @bp.route("/tags/", methods=["GET"])

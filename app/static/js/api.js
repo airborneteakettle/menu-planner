@@ -24,6 +24,7 @@ export const api = {
     get:       (id)           => req(`/recipes/${id}`),
     import:    (url, fallbackName) => req('/recipes/import', { method: 'POST', body: JSON.stringify({ url, fallback_name: fallbackName || undefined }) }),
     estimateNutrition: (ings) => req('/recipes/estimate-nutrition', { method: 'POST', body: JSON.stringify({ ingredients: ings }) }),
+    searchIngredient:  (ingredient, offset = 0) => req('/recipes/search-ingredient', { method: 'POST', body: JSON.stringify({ ingredient, offset }) }),
     create:    (data)         => req('/recipes/', { method: 'POST', body: JSON.stringify(data) }),
     update:    (id, data)     => req(`/recipes/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     setRating: (id, rating)   => req(`/recipes/${id}/rating`, { method: 'PATCH', body: JSON.stringify({ rating }) }),

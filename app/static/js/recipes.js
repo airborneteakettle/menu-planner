@@ -558,9 +558,11 @@ function splitQuantity(qty) {
 }
 
 function openEditModal(recipe) {
-  _editMode        = true;
-  _editingRecipeId = recipe.id;
+  _editMode         = true;
+  _editingRecipeId  = recipe.id;
   _pendingNutrition = null;
+  _breakdown        = [];
+  _totals           = {};
 
   document.querySelector('#modal-add-recipe .modal-title').innerHTML =
     '<i class="bi bi-pencil me-1"></i>Edit Recipe';
@@ -742,11 +744,21 @@ async function handleImportStub() {
 // ── Manual Add Modal ──────────────────────────────────────────────────────────
 
 let _pendingNutrition = null; // nutrition fetched but not yet saved
+let _breakdown        = [];   // current per-ingredient rows (with any overrides applied)
+let _totals           = {};   // current totals (recomputed when overrides applied)
+
+// ── Ingredient picker state ───────────────────────────────────────────────────
+let _pickerRowIdx     = -1;
+let _pickerIngredient = '';
+let _pickerOffset     = 0;
+let _pickerCandidates = [];
 
 function openManualAddModal() {
-  _editMode        = false;
-  _editingRecipeId = null;
+  _editMode         = false;
+  _editingRecipeId  = null;
   _pendingNutrition = null;
+  _breakdown        = [];
+  _totals           = {};
   document.querySelector('#modal-add-recipe .modal-title').innerHTML =
     '<i class="bi bi-journal-plus me-1"></i>Add Recipe';
   document.getElementById('ar-name').value         = '';
@@ -1002,18 +1014,32 @@ function getIngredients() {
 function renderNutritionBreakdown(totals, breakdown) {
   const fmtN = v => (v == null ? '<span class="text-muted">—</span>' : fmt(v));
 
-  const rows = breakdown.map(row => `
-    <tr class="${row.found ? '' : 'text-muted fst-italic'}">
+  const rows = breakdown.map((row, idx) => {
+    const ingredient = (row.quantity ? row.quantity + ' ' : '') + row.name;
+    return `
+    <tr class="${row.found || row._override ? '' : 'text-muted fst-italic'}">
       <td class="ps-0">
         ${row.quantity ? `<span class="text-muted me-1" style="font-size:.78rem">${escHtml(row.quantity)}</span>` : ''}
         ${escHtml(row.name)}
-        ${!row.found ? `<span class="badge bg-warning-subtle text-warning-emphasis ms-1" style="font-size:.65rem">not found</span>` : ''}
+        ${row._override
+          ? `<br><span class="text-muted" style="font-size:.68rem">→ ${escHtml(row._override)}</span>`
+          : ''}
+        ${!row.found && !row._override
+          ? `<span class="badge bg-warning-subtle text-warning-emphasis ms-1" style="font-size:.65rem">not found</span>`
+          : ''}
+        <button class="btn-pick-food ms-1"
+                data-row-index="${idx}"
+                data-ingredient="${escAttr(ingredient)}"
+                title="Choose different food match">
+          <i class="bi bi-search" style="font-size:.7rem"></i>
+        </button>
       </td>
       <td class="text-end">${fmtN(row.calories)}</td>
       <td class="text-end">${fmtN(row.protein_g)}</td>
       <td class="text-end">${fmtN(row.carbs_g)}</td>
       <td class="text-end">${fmtN(row.fat_g)}</td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
 
   return `
     <div class="small fw-semibold text-muted text-uppercase mb-2"
@@ -1083,20 +1109,14 @@ async function checkNutrition() {
 
   try {
     const { totals, breakdown } = await api.recipes.estimateNutrition(ingredients);
-    _pendingNutrition = totals;
 
-    // Populate the nutrition fields so the USDA values are what gets saved.
-    // (When editing, fields are pre-filled with old values and would otherwise
-    //  override _pendingNutrition at save time.)
-    const fmtN = v => (v != null && v > 0) ? String(Math.round(v * 10) / 10) : '';
-    document.getElementById('ar-calories').value = totals.calories  ? String(Math.round(totals.calories)) : '';
-    document.getElementById('ar-protein').value  = fmtN(totals.protein_g);
-    document.getElementById('ar-carbs').value    = fmtN(totals.carbs_g);
-    document.getElementById('ar-fat').value      = fmtN(totals.fat_g);
-    document.getElementById('ar-fiber').value    = fmtN(totals.fiber_g);
-    _updatePerServingPreview();
+    // Store breakdown so overrides can mutate it and recalculate totals
+    _breakdown = breakdown;
+    _totals    = { ...totals };
+    _pendingNutrition = _totals;
 
-    document.getElementById('ar-nutrition-panel').innerHTML = renderNutritionBreakdown(totals, breakdown);
+    _applyNutritionToForm(_totals);
+    renderAndWireBreakdown();
     panel.classList.remove('d-none');
     _updateSaveVisibility();
   } catch (e) {
@@ -1107,6 +1127,162 @@ async function checkNutrition() {
     icon.classList.remove('d-none');
     btn.disabled = false;
   }
+}
+
+// ── Nutrition helpers ─────────────────────────────────────────────────────────
+
+function _applyNutritionToForm(totals) {
+  const fmtN = v => (v != null && v > 0) ? String(Math.round(v * 10) / 10) : '';
+  document.getElementById('ar-calories').value = totals.calories  ? String(Math.round(totals.calories)) : '';
+  document.getElementById('ar-protein').value  = fmtN(totals.protein_g);
+  document.getElementById('ar-carbs').value    = fmtN(totals.carbs_g);
+  document.getElementById('ar-fat').value      = fmtN(totals.fat_g);
+  document.getElementById('ar-fiber').value    = fmtN(totals.fiber_g);
+  _updatePerServingPreview();
+}
+
+function renderAndWireBreakdown() {
+  const panel = document.getElementById('ar-nutrition-panel');
+  panel.innerHTML = renderNutritionBreakdown(_totals, _breakdown);
+  panel.querySelectorAll('.btn-pick-food').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      openIngredientPicker(+btn.dataset.rowIndex, btn.dataset.ingredient);
+    });
+  });
+}
+
+// ── Ingredient picker ─────────────────────────────────────────────────────────
+
+function openIngredientPicker(rowIndex, ingredient) {
+  _pickerRowIdx     = rowIndex;
+  _pickerIngredient = ingredient;
+  _pickerOffset     = 0;
+  _pickerCandidates = [];
+
+  const label = document.getElementById('picker-ingredient-label');
+  if (label) label.textContent = ingredient;
+
+  bootstrap.Offcanvas.getOrCreateInstance(
+    document.getElementById('ingredient-picker')
+  ).show();
+
+  loadPickerPage(0);
+}
+
+async function loadPickerPage(offset) {
+  _pickerOffset = offset;
+  const body = document.getElementById('picker-body');
+  if (!body) return;
+  body.innerHTML = `<div class="loading-state"><div class="spinner-border text-success"></div></div>`;
+
+  try {
+    const data = await api.recipes.searchIngredient(_pickerIngredient, offset);
+    _pickerCandidates = data.candidates;
+    body.innerHTML = renderPickerPage(data);
+
+    // Wire "Select" buttons
+    body.querySelectorAll('.btn-select-candidate').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const candidate = _pickerCandidates[+btn.dataset.idx];
+        applyNutritionOverride(_pickerRowIdx, candidate);
+        bootstrap.Offcanvas.getInstance(
+          document.getElementById('ingredient-picker')
+        )?.hide();
+      });
+    });
+
+    // Wire "Next 10" button
+    const nextBtn = body.querySelector('#picker-next-btn');
+    if (nextBtn) {
+      nextBtn.addEventListener('click', () => loadPickerPage(+nextBtn.dataset.offset));
+    }
+  } catch (e) {
+    body.innerHTML = `<div class="alert alert-danger m-3">${e.message}</div>`;
+  }
+}
+
+function renderPickerPage(data) {
+  const { food_name, grams, candidates, has_more, offset, total } = data;
+
+  if (!candidates.length) {
+    return `<p class="text-muted small p-3 mb-0">No results found for "${escHtml(food_name)}".</p>`;
+  }
+
+  const unit   = grams != null ? `scaled to ${grams}g` : 'per 100g';
+  const header = `
+    <div class="px-3 pt-2 pb-1 border-bottom bg-light" style="font-size:.75rem;color:#666">
+      Showing ${offset + 1}–${offset + candidates.length}${total > 0 ? ' of ' + total : ''} &middot;
+      values ${unit}
+    </div>`;
+
+  const rows = candidates.map((c, idx) => {
+    const dtClass = c.dataType === 'Foundation'
+      ? 'bg-success-subtle text-success-emphasis'
+      : 'bg-secondary-subtle text-secondary-emphasis';
+    const calStr  = c.calories  != null ? Math.round(c.calories)  + ' kcal' : '—';
+    const protStr = c.protein_g != null ? c.protein_g + 'g prot'  : '';
+    const carbStr = c.carbs_g   != null ? c.carbs_g   + 'g carbs' : '';
+    const fatStr  = c.fat_g     != null ? c.fat_g     + 'g fat'   : '';
+    const macros  = [calStr, protStr, carbStr, fatStr].filter(Boolean).join(' · ');
+
+    return `
+      <div class="picker-candidate border-bottom px-3 py-2">
+        <div class="d-flex align-items-start gap-2">
+          <div class="flex-grow-1 min-w-0">
+            <div class="fw-medium lh-sm picker-desc">${escHtml(c.description)}</div>
+            <div class="d-flex align-items-center gap-2 mt-1 flex-wrap">
+              <span class="badge ${dtClass}" style="font-size:.6rem">${escHtml(c.dataType)}</span>
+              <span class="text-muted picker-macros">${escHtml(macros)}</span>
+            </div>
+          </div>
+          <button class="btn btn-outline-success btn-sm flex-shrink-0 btn-select-candidate"
+                  data-idx="${idx}">Select</button>
+        </div>
+      </div>`;
+  }).join('');
+
+  const moreBtn = has_more ? `
+    <div class="text-center p-3">
+      <button class="btn btn-outline-secondary btn-sm" id="picker-next-btn"
+              data-offset="${offset + candidates.length}">
+        <i class="bi bi-arrow-down me-1"></i>Next 10
+      </button>
+    </div>` : '';
+
+  return header + rows + moreBtn;
+}
+
+function applyNutritionOverride(rowIndex, candidate) {
+  if (rowIndex < 0 || rowIndex >= _breakdown.length) return;
+
+  _breakdown[rowIndex] = {
+    ..._breakdown[rowIndex],
+    found:     true,
+    calories:  candidate.calories,
+    protein_g: candidate.protein_g,
+    carbs_g:   candidate.carbs_g,
+    fat_g:     candidate.fat_g,
+    fiber_g:   candidate.fiber_g,
+    _override: candidate.description,
+  };
+
+  // Recompute totals from breakdown
+  const KEYS = ['calories', 'protein_g', 'fat_g', 'carbs_g', 'fiber_g'];
+  _totals = Object.fromEntries(KEYS.map(k => [k, 0]));
+  for (const row of _breakdown) {
+    if (row.found || row._override) {
+      for (const k of KEYS) _totals[k] += row[k] || 0;
+    }
+  }
+  // Round totals
+  for (const k of KEYS) _totals[k] = Math.round(_totals[k] * 10) / 10;
+
+  _pendingNutrition = { ..._totals };
+  _applyNutritionToForm(_totals);
+  renderAndWireBreakdown();
+  document.getElementById('ar-nutrition-panel').classList.remove('d-none');
+  _updateSaveVisibility();
 }
 
 async function saveManualRecipe() {
@@ -1194,5 +1370,8 @@ function renderInstructions(text) {
 function cap(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''; }
 
 function escHtml(s) {
-  return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function escAttr(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;');
 }

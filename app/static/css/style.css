@@ -373,6 +373,28 @@ body {
   color: var(--brand-mid);
 }
 
+/* ── Ingredient picker (offcanvas) ──────────────────────── */
+.btn-pick-food {
+  background: none;
+  border: none;
+  padding: 0 2px;
+  color: #bbb;
+  cursor: pointer;
+  line-height: 1;
+  vertical-align: middle;
+  border-radius: 3px;
+  transition: color .1s;
+}
+.btn-pick-food:hover { color: var(--brand-mid); }
+
+.picker-candidate {
+  transition: background .1s;
+}
+.picker-candidate:hover { background: #f8f9fa; }
+
+.picker-desc { font-size: .82rem; }
+.picker-macros { font-size: .72rem; }
+
 /* ── Goals ──────────────────────────────────────────────── */
 .goal-stat {
   text-align: center;

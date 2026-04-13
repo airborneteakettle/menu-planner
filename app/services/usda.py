@@ -195,9 +195,19 @@ def quantity_to_grams(quantity_str: str | None) -> float | None:
 _LEADING_ADJ_RE = re.compile(
     r"^(?:fresh(?:ly)?|very\s+ripe|ripe|crisp|small|medium|large|extra[- ]?large|"
     r"coarsely|finely|thinly|roughly|lightly|loosely\s+packed|packed|"
-    r"frozen|canned|dried|ground|whole|"
+    r"frozen|canned|dried|ground|whole|baked|roasted|boiled|steamed|grilled|"
+    r"sauteed|saut\xe9ed|fried|broiled|blanched|braised|poached|smoked|"
     r"low[- ]fat|fat[- ]free|"
     r"sharp|smooth|plain|greek[- ]?style)\s+",
+    re.IGNORECASE,
+)
+
+# Strips a leading cooking-method word followed by a comma:
+# "Baked, Sweet potato" → "Sweet potato"
+_LEADING_PREP_COMMA_RE = re.compile(
+    r"^(?:baked|roasted|boiled|steamed|grilled|sauteed|saut\xe9ed|fried|broiled|"
+    r"blanched|braised|poached|smoked|cooked|raw|sliced|chopped|diced|minced|"
+    r"crushed|grated|shredded|dried|ground|whole|frozen|canned|seasoned),\s+",
     re.IGNORECASE,
 )
 
@@ -231,6 +241,8 @@ def parse_ingredient(ingredient_str: str) -> tuple[str | None, str]:
     )
     # Strip "or [alternative]" — keep only the first option
     food_name = re.sub(r"\s+or\s+\S.*$", "", food_name, flags=re.IGNORECASE)
+    # Strip leading "PrepMethod, " prefix e.g. "Baked, Sweet potato" → "Sweet potato"
+    food_name = _LEADING_PREP_COMMA_RE.sub("", food_name)
     # Strip leading preparation/size adjectives (up to 3 passes for stacked adjectives)
     for _ in range(3):
         cleaned = _LEADING_ADJ_RE.sub("", food_name)
@@ -510,10 +522,12 @@ def lookup_ingredient_nutrition(ingredient: str, api_key: str) -> dict | None:
                 return 2  # name appears as a word near the start
             return 3
 
+        # Rank by: data type quality first, then description match.
+        # _has_calories is intentionally excluded — Foundation search snippets
+        # omit calorie data for many foods, causing spurious tiebreaker losses.
         food = min(foods, key=lambda f: (
             _DT_RANK.get(f.get("dataType", ""), 99),
             _desc_match(f.get("description", ""), food_name),
-            0 if _has_calories(f) else 1,
         ))
         per_100g = _parse_nutrients(food.get("foodNutrients", []))
         log.info("USDA_FOOD_MATCH: fdcId=%s dataType=%s description=%r per100g_cal=%.1f",

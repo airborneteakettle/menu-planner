@@ -469,6 +469,124 @@ function openRecipePicker(date, meal) {
   });
 }
 
+// ── Ad Hoc Meal USDA Lookup ───────────────────────────────────────────────────
+
+let _adhocPickerOffset     = 0;
+let _adhocPickerCandidates = [];
+let _adhocPickerIngredient = '';
+
+function _adhocEscHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function openAdhocPicker() {
+  const name = document.getElementById('adhoc-name').value.trim();
+  if (!name) { document.getElementById('adhoc-name').focus(); return; }
+  _adhocPickerIngredient = name;
+  _adhocPickerOffset     = 0;
+  _adhocPickerCandidates = [];
+  loadAdhocPickerPage(0);
+}
+
+async function loadAdhocPickerPage(offset) {
+  _adhocPickerOffset = offset;
+  const panel = document.getElementById('adhoc-picker-panel');
+  panel.classList.remove('d-none');
+  panel.innerHTML = `<div class="loading-state py-3"><div class="spinner-border spinner-border-sm text-success"></div></div>`;
+
+  try {
+    const data = await api.recipes.searchIngredient(_adhocPickerIngredient, offset);
+    _adhocPickerCandidates = data.candidates;
+    panel.innerHTML = renderAdhocPickerPage(data);
+
+    panel.querySelectorAll('.btn-adhoc-select').forEach(btn => {
+      btn.addEventListener('click', () => {
+        applyAdhocSelection(_adhocPickerCandidates[+btn.dataset.idx]);
+      });
+    });
+    const nextBtn = panel.querySelector('#adhoc-picker-next');
+    if (nextBtn) {
+      nextBtn.addEventListener('click', () => loadAdhocPickerPage(+nextBtn.dataset.offset));
+    }
+  } catch (e) {
+    panel.innerHTML = `<div class="alert alert-danger m-2">${_adhocEscHtml(e.message)}</div>`;
+  }
+}
+
+function renderAdhocPickerPage(data) {
+  const { food_name, grams, candidates, has_more, offset, total } = data;
+
+  if (!candidates.length) {
+    return `<p class="text-muted small p-3 mb-0">No results found for "${_adhocEscHtml(food_name)}".</p>`;
+  }
+
+  const unit   = grams != null ? `scaled to ${grams}g` : 'per 100g';
+  const header = `
+    <div class="d-flex align-items-center justify-content-between px-3 pt-2 pb-1 border-bottom"
+         style="font-size:.75rem;color:#666">
+      <span>Showing ${offset + 1}–${offset + candidates.length}${total > 0 ? ' of ' + total : ''} · values ${unit}</span>
+      <button class="btn btn-link btn-sm p-0 text-muted" id="adhoc-picker-close" style="font-size:.75rem">
+        Close
+      </button>
+    </div>`;
+
+  const rows = candidates.map((c, idx) => {
+    const dtClass = c.dataType === 'Foundation'
+      ? 'bg-success-subtle text-success-emphasis'
+      : c.dataType === 'Branded'
+        ? 'bg-warning-subtle text-warning-emphasis'
+        : 'bg-secondary-subtle text-secondary-emphasis';
+    const calStr  = c.calories  != null ? Math.round(c.calories)  + ' kcal' : '—';
+    const protStr = c.protein_g != null ? c.protein_g + 'g prot'  : '';
+    const carbStr = c.carbs_g   != null ? c.carbs_g   + 'g carbs' : '';
+    const fatStr  = c.fat_g     != null ? c.fat_g     + 'g fat'   : '';
+    const macros  = [calStr, protStr, carbStr, fatStr].filter(Boolean).join(' · ');
+    return `
+      <div class="border-bottom px-3 py-2" style="transition:background .1s" onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background=''">
+        <div class="d-flex align-items-start gap-2">
+          <div class="flex-grow-1 min-w-0">
+            <div class="fw-medium lh-sm" style="font-size:.82rem">${_adhocEscHtml(c.description)}</div>
+            <div class="d-flex align-items-center gap-2 mt-1 flex-wrap">
+              <span class="badge ${dtClass}" style="font-size:.6rem">${_adhocEscHtml(c.dataType)}</span>
+              <span class="text-muted" style="font-size:.72rem">${_adhocEscHtml(macros)}</span>
+            </div>
+          </div>
+          <button class="btn btn-outline-success btn-sm flex-shrink-0 btn-adhoc-select"
+                  data-idx="${idx}">Select</button>
+        </div>
+      </div>`;
+  }).join('');
+
+  const moreBtn = has_more ? `
+    <div class="text-center p-3">
+      <button class="btn btn-outline-secondary btn-sm" id="adhoc-picker-next"
+              data-offset="${offset + candidates.length}">
+        <i class="bi bi-arrow-down me-1"></i>Next 10
+      </button>
+    </div>` : '';
+
+  return header + rows + moreBtn;
+}
+
+function applyAdhocSelection(candidate) {
+  const fmt1 = v => (v != null && v > 0) ? String(Math.round(v * 10) / 10) : '';
+  document.getElementById('adhoc-calories').value = candidate.calories != null ? String(Math.round(candidate.calories)) : '';
+  document.getElementById('adhoc-protein').value  = fmt1(candidate.protein_g);
+  document.getElementById('adhoc-carbs').value    = fmt1(candidate.carbs_g);
+  document.getElementById('adhoc-fat').value      = fmt1(candidate.fat_g);
+  document.getElementById('adhoc-fiber').value    = fmt1(candidate.fiber_g);
+
+  // Update lookup button to show it's been linked
+  const btn = document.getElementById('btn-adhoc-lookup');
+  btn.innerHTML = '<i class="bi bi-check-lg"></i>';
+  btn.classList.remove('btn-outline-secondary');
+  btn.classList.add('btn-success');
+  btn.title = candidate.description;
+
+  // Close the picker panel
+  document.getElementById('adhoc-picker-panel').classList.add('d-none');
+}
+
 // ── Ad Hoc Meal Modal ─────────────────────────────────────────────────────────
 
 function openAdHocModal(date, meal) {
@@ -481,6 +599,12 @@ function openAdHocModal(date, meal) {
   document.getElementById('adhoc-fat').value      = '';
   document.getElementById('adhoc-fiber').value    = '';
   document.getElementById('adhoc-error').classList.add('d-none');
+  document.getElementById('adhoc-picker-panel').classList.add('d-none');
+  // Reset lookup button to default state
+  const lookupBtn = document.getElementById('btn-adhoc-lookup');
+  lookupBtn.innerHTML = '<i class="bi bi-search"></i>';
+  lookupBtn.className  = 'btn btn-outline-secondary';
+  lookupBtn.title      = 'Look up in USDA database';
   bootstrap.Modal.getOrCreateInstance(document.getElementById('modal-adhoc-meal')).show();
   setTimeout(() => document.getElementById('adhoc-name').focus(), 300);
 }
@@ -489,6 +613,24 @@ function openAdHocModal(date, meal) {
 document.addEventListener('DOMContentLoaded', () => {
   const submitBtn = document.getElementById('btn-adhoc-submit');
   if (!submitBtn) return;
+
+  // Lookup button
+  document.getElementById('btn-adhoc-lookup').addEventListener('click', openAdhocPicker);
+  // Typing clears the linked state
+  document.getElementById('adhoc-name').addEventListener('input', () => {
+    const btn = document.getElementById('btn-adhoc-lookup');
+    if (btn.classList.contains('btn-success')) {
+      btn.innerHTML = '<i class="bi bi-search"></i>';
+      btn.className  = 'btn btn-outline-secondary';
+      btn.title      = 'Look up in USDA database';
+    }
+  });
+  // Close picker via event delegation (the close button is dynamically rendered)
+  document.getElementById('adhoc-picker-panel').addEventListener('click', e => {
+    if (e.target.closest('#adhoc-picker-close')) {
+      document.getElementById('adhoc-picker-panel').classList.add('d-none');
+    }
+  });
   submitBtn.addEventListener('click', async () => {
     const name    = document.getElementById('adhoc-name').value.trim();
     const errEl   = document.getElementById('adhoc-error');

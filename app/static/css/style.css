@@ -373,6 +373,11 @@ body {
   color: var(--brand-mid);
 }
 
+/* ── Ingredient row lookup button ───────────────────────── */
+.ar-ing-lookup {
+  transition: color .15s, background-color .15s, border-color .15s;
+}
+
 /* ── Ingredient picker (offcanvas) ──────────────────────── */
 .btn-pick-food {
   background: none;

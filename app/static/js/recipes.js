@@ -748,10 +748,12 @@ let _breakdown        = [];   // current per-ingredient rows (with any overrides
 let _totals           = {};   // current totals (recomputed when overrides applied)
 
 // ── Ingredient picker state ───────────────────────────────────────────────────
-let _pickerRowIdx     = -1;
-let _pickerIngredient = '';
-let _pickerOffset     = 0;
-let _pickerCandidates = [];
+let _pickerRowIdx      = -1;    // >=0 → breakdown row; -1 → row-level lookup
+let _pickerIngredient  = '';
+let _pickerOffset      = 0;
+let _pickerCandidates  = [];
+let _pickerIngRow      = null;  // DOM row element for row-level lookups
+let _pickerOnBack      = null;  // callback when picker is dismissed
 
 function openManualAddModal() {
   _editMode         = false;
@@ -974,12 +976,29 @@ function addIngredientRow(amount = '', unit = '', name = '') {
     </select>
     <input  type="text" class="form-control ar-ing-name" placeholder="Ingredient name"
             value="${escHtml(name)}">
+    <button type="button" class="btn btn-outline-secondary ar-ing-lookup" tabindex="-1"
+            title="Look up in USDA database">
+      <i class="bi bi-search"></i>
+    </button>
     <button type="button" class="btn btn-outline-secondary ar-remove-row" tabindex="-1">
       <i class="bi bi-x"></i>
     </button>`;
 
   row.querySelector('.ar-remove-row').addEventListener('click', () => {
     if (container.querySelectorAll('.ar-ingredient-row').length > 1) row.remove();
+  });
+
+  row.querySelector('.ar-ing-lookup').addEventListener('click', () => openRowIngredientPicker(row));
+
+  // Changing the name clears any pre-selection so stale results aren't used
+  row.querySelector('.ar-ing-name').addEventListener('input', () => {
+    if (row._preNutrition) {
+      row._preNutrition = null;
+      const btn = row.querySelector('.ar-ing-lookup');
+      btn.innerHTML = '<i class="bi bi-search"></i>';
+      btn.className  = 'btn btn-outline-secondary ar-ing-lookup';
+      btn.title      = 'Look up in USDA database';
+    }
   });
 
   // Enter in name field → advance to next row or add one
@@ -1006,7 +1025,7 @@ function getIngredients() {
       const unit   = row.querySelector('.ar-ing-unit').value;
       const name   = row.querySelector('.ar-ing-name').value.trim();
       const qty    = [amount, unit].filter(Boolean).join(' ') || null;
-      return { quantity: qty, name };
+      return { quantity: qty, name, preNutrition: row._preNutrition || null };
     })
     .filter(i => i?.name);
 }
@@ -1110,9 +1129,34 @@ async function checkNutrition() {
   try {
     const { totals, breakdown } = await api.recipes.estimateNutrition(ingredients);
 
-    // Store breakdown so overrides can mutate it and recalculate totals
+    // Apply any row-level pre-selections (overrides API auto-pick for that ingredient)
+    const KEYS = ['calories', 'protein_g', 'fat_g', 'carbs_g', 'fiber_g'];
+    ingredients.forEach((ing, idx) => {
+      if (ing.preNutrition && idx < breakdown.length) {
+        breakdown[idx] = {
+          ...breakdown[idx],
+          found:     true,
+          calories:  ing.preNutrition.calories,
+          protein_g: ing.preNutrition.protein_g,
+          carbs_g:   ing.preNutrition.carbs_g,
+          fat_g:     ing.preNutrition.fat_g,
+          fiber_g:   ing.preNutrition.fiber_g,
+          _override: ing.preNutrition.description,
+        };
+      }
+    });
+
+    // Recompute totals so pre-selected rows are reflected
+    const computedTotals = Object.fromEntries(KEYS.map(k => [k, 0]));
+    for (const row of breakdown) {
+      if (row.found || row._override) {
+        for (const k of KEYS) computedTotals[k] += row[k] || 0;
+      }
+    }
+    for (const k of KEYS) computedTotals[k] = Math.round(computedTotals[k] * 10) / 10;
+
     _breakdown = breakdown;
-    _totals    = { ...totals };
+    _totals    = computedTotals;
     _pendingNutrition = _totals;
 
     _applyNutritionToForm(_totals);
@@ -1159,6 +1203,7 @@ function openIngredientPicker(rowIndex, ingredient) {
   _pickerIngredient = ingredient;
   _pickerOffset     = 0;
   _pickerCandidates = [];
+  if (rowIndex >= 0) { _pickerIngRow = null; _pickerOnBack = null; } // breakdown mode
 
   // Render picker inline inside the nutrition panel — avoids z-index issues
   // with Bootstrap modals (offcanvas sits behind the modal backdrop).
@@ -1175,7 +1220,9 @@ function openIngredientPicker(rowIndex, ingredient) {
     </div>`;
   panel.classList.remove('d-none');
 
-  document.getElementById('picker-back-btn').addEventListener('click', renderAndWireBreakdown);
+  document.getElementById('picker-back-btn').addEventListener('click', () => {
+    (_pickerOnBack || renderAndWireBreakdown)();
+  });
 
   loadPickerPage(0);
 }
@@ -1195,8 +1242,11 @@ async function loadPickerPage(offset) {
     body.querySelectorAll('.btn-select-candidate').forEach(btn => {
       btn.addEventListener('click', () => {
         const candidate = _pickerCandidates[+btn.dataset.idx];
-        applyNutritionOverride(_pickerRowIdx, candidate);
-        // applyNutritionOverride calls renderAndWireBreakdown which replaces the panel
+        if (_pickerRowIdx >= 0) {
+          applyNutritionOverride(_pickerRowIdx, candidate); // breakdown row mode
+        } else if (_pickerIngRow) {
+          applyRowPreselection(_pickerIngRow, candidate);   // ingredient row mode
+        }
       });
     });
 
@@ -1259,6 +1309,52 @@ function renderPickerPage(data) {
     </div>` : '';
 
   return header + rows + moreBtn;
+}
+
+function openRowIngredientPicker(row) {
+  const name = row.querySelector('.ar-ing-name').value.trim();
+  if (!name) { row.querySelector('.ar-ing-name').focus(); return; }
+
+  const amount = row.querySelector('.ar-ing-amount').value.trim();
+  const unit   = row.querySelector('.ar-ing-unit').value;
+  const ingredient = [amount, unit, name].filter(Boolean).join(' ');
+
+  _pickerIngRow = row;
+  _pickerRowIdx = -1;  // row-level mode
+
+  // When Back is clicked, restore panel to its prior state
+  const panel      = document.getElementById('ar-nutrition-panel');
+  const wasVisible = !panel.classList.contains('d-none');
+  _pickerOnBack = () => {
+    if (wasVisible && _breakdown.length) {
+      renderAndWireBreakdown();
+    } else {
+      panel.innerHTML = '';
+      panel.classList.add('d-none');
+    }
+  };
+
+  openIngredientPicker(-1, ingredient);
+}
+
+function applyRowPreselection(row, candidate) {
+  row._preNutrition = {
+    calories:    candidate.calories,
+    protein_g:   candidate.protein_g,
+    carbs_g:     candidate.carbs_g,
+    fat_g:       candidate.fat_g,
+    fiber_g:     candidate.fiber_g,
+    description: candidate.description,
+  };
+
+  // Update the lookup button to a green checkmark so the user knows it's linked
+  const btn  = row.querySelector('.ar-ing-lookup');
+  btn.innerHTML = '<i class="bi bi-check-lg"></i>';
+  btn.className  = 'btn btn-success ar-ing-lookup';
+  btn.title      = candidate.description;
+
+  // Restore panel (hides it or goes back to breakdown)
+  if (_pickerOnBack) _pickerOnBack();
 }
 
 function applyNutritionOverride(rowIndex, candidate) {

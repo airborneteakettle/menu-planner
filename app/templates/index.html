@@ -289,8 +289,18 @@
       <div class="modal-body">
         <div class="mb-3">
           <label class="form-label fw-medium" for="adhoc-name">Label <span class="text-danger">*</span></label>
-          <input type="text" class="form-control" id="adhoc-name" placeholder="e.g. Chipotle burrito bowl">
+          <div class="input-group">
+            <input type="text" class="form-control" id="adhoc-name" placeholder="e.g. 2 cups oatmeal">
+            <button type="button" class="btn btn-outline-secondary" id="btn-adhoc-lookup"
+                    title="Look up in USDA database">
+              <i class="bi bi-search"></i>
+            </button>
+          </div>
+          <div class="form-text">Include quantity for scaled nutrition (e.g. "2 cups oatmeal")</div>
         </div>
+        <!-- Inline USDA picker (shown when lookup button is clicked) -->
+        <div id="adhoc-picker-panel" class="d-none border rounded bg-light mb-3"
+             style="max-height:300px;overflow-y:auto"></div>
         <div class="row g-2 mb-3">
           <div class="col-6">
             <label class="form-label fw-medium" for="adhoc-date">Date</label>

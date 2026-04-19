@@ -46,6 +46,7 @@ export const api = {
     customItems: {
       list:   (weekStart) => req(`/menu/custom-items?week_start=${weekStart || ''}`),
       add:    (data)      => req('/menu/custom-items', { method: 'POST', body: JSON.stringify(data) }),
+      update: (id, data)  => req(`/menu/custom-items/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
       remove: (id)        => req(`/menu/custom-items/${id}`, { method: 'DELETE' }),
     },
     shoppingChecked: {

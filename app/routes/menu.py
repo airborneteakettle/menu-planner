@@ -410,6 +410,24 @@ def add_custom_item():
     return jsonify(item.to_dict()), 201
 
 
+@bp.route("/custom-items/<int:item_id>", methods=["PATCH"])
+def patch_custom_item(item_id):
+    member_ids = _household_user_ids()
+    item = CustomShoppingItem.query.filter(
+        CustomShoppingItem.id == item_id,
+        CustomShoppingItem.user_id.in_(member_ids),
+    ).first_or_404()
+    data = request.get_json() or {}
+    if "category" in data:
+        item.category = (data["category"] or "Miscellaneous").strip()
+    if "name" in data:
+        item.name = data["name"].strip()
+    if "quantity" in data:
+        item.quantity = (data["quantity"] or "").strip() or None
+    db.session.commit()
+    return jsonify(item.to_dict())
+
+
 @bp.route("/custom-items/<int:item_id>", methods=["DELETE"])
 def delete_custom_item(item_id):
     member_ids = _household_user_ids()

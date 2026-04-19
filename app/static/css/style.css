@@ -354,6 +354,29 @@ body {
 }
 .btn-remove-custom:hover { color: #c62828; }
 
+.drag-handle {
+  cursor: grab;
+  color: #ccc;
+  padding: 0 1px;
+  flex-shrink: 0;
+  align-self: center;
+  font-size: .85rem;
+  line-height: 1;
+  user-select: none;
+}
+.drag-handle:hover { color: #999; }
+
+.shop-item.dragging {
+  opacity: 0.35;
+}
+
+.section-items.drag-over {
+  background: rgba(76, 175, 80, 0.06);
+  border-radius: 4px;
+  outline: 2px dashed #81c784;
+  min-height: 2.5rem;
+}
+
 .btn-add-to-category {
   display: inline-flex;
   align-items: center;

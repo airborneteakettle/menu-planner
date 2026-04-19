@@ -156,7 +156,10 @@ function shopItemHtml(item, isCustom = false) {
   const isChecked = _checkedKeys.has(key);
   return `
     <div class="shop-item${isChecked ? ' checked' : ''}" data-key="${key}"
-         ${isCustom ? `data-custom-id="${item.id}"` : ''}>
+         ${isCustom ? `data-custom-id="${item.id}" draggable="true"` : ''}>
+      ${isCustom
+        ? `<span class="drag-handle" title="Drag to change category"><i class="bi bi-grip-vertical"></i></span>`
+        : ''}
       <input type="checkbox" ${isChecked ? 'checked' : ''}>
       <span class="shop-item-qty">${(item.quantity || '').trim()}</span>
       <span class="shop-item-name">${item.name.trim()}</span>
@@ -261,6 +264,7 @@ function renderList(body, data, custom = []) {
   body.querySelectorAll('.shop-item').forEach(row => {
     row.addEventListener('click', async (e) => {
       if (e.target.closest('.btn-remove-custom')) return; // ignore delete button
+      if (e.target.closest('.drag-handle')) return;       // ignore drag handle
       const cb = row.querySelector('input[type=checkbox]');
       if (!cb) return;
       // If the checkbox itself was clicked the browser already toggled it;
@@ -292,8 +296,80 @@ function renderList(body, data, custom = []) {
   // Wire delete on existing custom rows
   body.querySelectorAll('[data-custom-id]').forEach(wireCustomDelete);
 
+  // Drag-and-drop between categories (custom items only)
+  setupDragAndDrop(body);
+
   // Apply current checked-visibility state
   applyCheckedVisibility();
+}
+
+// ── Drag and drop ─────────────────────────────────────────────────────────────
+
+function setupDragAndDrop(body) {
+  let dragSrc = null;
+
+  body.querySelectorAll('[data-custom-id]').forEach(row => {
+    row.addEventListener('dragstart', e => {
+      dragSrc = row;
+      row.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', row.dataset.customId);
+    });
+
+    row.addEventListener('dragend', () => {
+      row.classList.remove('dragging');
+      body.querySelectorAll('.section-items').forEach(z => z.classList.remove('drag-over'));
+      dragSrc = null;
+    });
+  });
+
+  body.querySelectorAll('.section-items').forEach(zone => {
+    zone.addEventListener('dragover', e => {
+      if (!dragSrc) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+    });
+
+    zone.addEventListener('dragenter', e => {
+      if (!dragSrc) return;
+      e.preventDefault();
+      const targetSection = zone.closest('[data-section-category]');
+      const sourceSection = dragSrc.closest('[data-section-category]');
+      if (targetSection !== sourceSection) zone.classList.add('drag-over');
+    });
+
+    zone.addEventListener('dragleave', e => {
+      if (!zone.contains(e.relatedTarget)) zone.classList.remove('drag-over');
+    });
+
+    zone.addEventListener('drop', async e => {
+      e.preventDefault();
+      zone.classList.remove('drag-over');
+      if (!dragSrc) return;
+
+      const targetSection = zone.closest('[data-section-category]');
+      const sourceSection = dragSrc.closest('[data-section-category]');
+      if (!targetSection || !sourceSection || targetSection === sourceSection) return;
+
+      const newCat = targetSection.dataset.sectionCategory;
+      const id     = +dragSrc.dataset.customId;
+
+      // Move the row into the target section-items
+      zone.appendChild(dragSrc);
+
+      // Refresh item counts on both sections
+      refreshSectionCount(sourceSection);
+      refreshSectionCount(targetSection);
+
+      // Persist the category change
+      try {
+        await api.menu.customItems.update(id, { category: newCat });
+      } catch (err) {
+        toast(err.message, 'danger');
+        await loadList(); // revert to server state on failure
+      }
+    });
+  });
 }
 
 function applyCheckedVisibility() {

@@ -40,6 +40,7 @@ export const api = {
     summary:  (date)    => req(`/menu/daily-summary?date=${date}`),
     weeklySummary: (start) => req(`/menu/weekly-summary${start ? '?start=' + start : ''}`),
     shopping: (s, e)    => req(`/menu/shopping-list?start=${s}&end=${e}`),
+    addRecipeToShopping: (data) => req('/menu/shopping-from-recipe', { method: 'POST', body: JSON.stringify(data) }),
     share:   (id, userId) => req(`/menu/${id}/share`, { method: 'POST', body: JSON.stringify({ user_id: userId }) }),
     unshare: (id, userId) => req(`/menu/${id}/share/${userId}`, { method: 'DELETE' }),
     customItems: {

@@ -1,5 +1,5 @@
 import { api }                              from './api.js';
-import { toast, fmt, MEAL_TYPES, MEAL_COLORS } from './utils.js';
+import { toast, fmt, MEAL_TYPES, MEAL_COLORS, today } from './utils.js';
 
 let _el           = null;
 let _allRecipes   = [];
@@ -448,6 +448,97 @@ function populateModal(r, allTags) {
   } else {
     reimportBtn.classList.add('d-none');
   }
+
+  document.getElementById('btn-add-to-shopping').onclick = (e) => {
+    openAddToShoppingPopover(e.currentTarget, r);
+  };
+}
+
+function openAddToShoppingPopover(btn, recipe) {
+  // Remove any existing popover
+  document.querySelectorAll('.add-to-shopping-popover').forEach(p => p.remove());
+
+  // Build week options: current week + 2 more
+  const weekOptions = [];
+  const d = new Date(today());
+  const day = d.getDay();
+  const monday = new Date(d);
+  monday.setDate(d.getDate() - ((day + 6) % 7)); // roll back to Monday
+
+  for (let i = 0; i < 3; i++) {
+    const ws = new Date(monday);
+    ws.setDate(monday.getDate() + i * 7);
+    const iso = ws.toISOString().slice(0, 10);
+    const label = i === 0 ? 'This week' : i === 1 ? 'Next week' : `+${i} weeks`;
+    const end = new Date(ws);
+    end.setDate(ws.getDate() + 6);
+    const dateRange = `${ws.toLocaleDateString('en-US', { month:'short', day:'numeric' })}–${end.toLocaleDateString('en-US', { month:'short', day:'numeric' })}`;
+    weekOptions.push({ iso, label: `${label} (${dateRange})` });
+  }
+
+  const popover = document.createElement('div');
+  popover.className = 'add-to-shopping-popover card shadow-sm border';
+  popover.style.cssText = 'position:absolute;z-index:9999;width:280px;font-size:.875rem';
+  popover.innerHTML = `
+    <div class="card-body p-3">
+      <div class="fw-semibold mb-2" style="font-size:.85rem">
+        <i class="bi bi-bag-plus me-1 text-success"></i>Add to Shopping List
+      </div>
+      <div class="mb-2">
+        <label class="form-label small mb-1">Week</label>
+        <select class="form-select form-select-sm" id="shop-week-select">
+          ${weekOptions.map((w, i) => `<option value="${w.iso}"${i===0?' selected':''}>${w.label}</option>`).join('')}
+        </select>
+      </div>
+      <div class="mb-3">
+        <label class="form-label small mb-1">Servings <span class="text-muted">(to scale ingredients)</span></label>
+        <input type="number" class="form-control form-control-sm" id="shop-servings-input"
+               value="${recipe.servings || 1}" min="1" step="1">
+      </div>
+      <div class="d-flex gap-2">
+        <button class="btn btn-success btn-sm flex-grow-1" id="shop-confirm-btn">
+          <span class="spinner-border spinner-border-sm d-none me-1" id="shop-confirm-spinner"></span>
+          Add ${recipe.ingredients?.filter(i => !i.is_header).length || 0} ingredients
+        </button>
+        <button class="btn btn-outline-secondary btn-sm" id="shop-cancel-btn">Cancel</button>
+      </div>
+    </div>`;
+
+  // Position below the button
+  document.body.appendChild(popover);
+  const rect = btn.getBoundingClientRect();
+  popover.style.top  = `${rect.bottom + window.scrollY + 6}px`;
+  popover.style.left = `${Math.max(4, rect.right - 280 + window.scrollX)}px`;
+
+  document.getElementById('shop-cancel-btn').addEventListener('click', () => popover.remove());
+
+  document.getElementById('shop-confirm-btn').addEventListener('click', async () => {
+    const weekStart = document.getElementById('shop-week-select').value;
+    const servings  = +document.getElementById('shop-servings-input').value || recipe.servings || 1;
+    const spinner   = document.getElementById('shop-confirm-spinner');
+    const confirmBtn = document.getElementById('shop-confirm-btn');
+    spinner.classList.remove('d-none');
+    confirmBtn.disabled = true;
+    try {
+      const result = await api.menu.addRecipeToShopping({ recipe_id: recipe.id, week_start: weekStart, servings });
+      popover.remove();
+      toast(`Added ${result.added} ingredient${result.added !== 1 ? 's' : ''} from "${result.recipe}" to shopping list`);
+    } catch (err) {
+      spinner.classList.add('d-none');
+      confirmBtn.disabled = false;
+      toast(err.message, 'danger');
+    }
+  });
+
+  // Close on outside click
+  setTimeout(() => {
+    document.addEventListener('click', function close(ev) {
+      if (!popover.contains(ev.target) && ev.target !== btn) {
+        popover.remove();
+        document.removeEventListener('click', close);
+      }
+    });
+  }, 0);
 }
 
 function wireStars(bodyEl, recipe) {

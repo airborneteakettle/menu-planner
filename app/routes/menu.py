@@ -8,7 +8,7 @@ from app.models.recipe import Recipe, Tag
 from app.models.goals import DietGoal
 from app.models.shopping import CustomShoppingItem, ShoppingCheckedItem
 from app.models.household import HouseholdMember
-from app.services.shopping import generate_shopping_list
+from app.services.shopping import generate_shopping_list, _categorize
 from datetime import date, timedelta
 
 bp = Blueprint("menu", __name__)
@@ -309,6 +309,72 @@ def unshare_entry(entry_id, uid):
         db.session.delete(share)
         db.session.commit()
     return "", 204
+
+
+# ── Add recipe ingredients directly to shopping list ─────────────────────────
+
+@bp.route("/shopping-from-recipe", methods=["POST"])
+def shopping_from_recipe():
+    """Add a recipe's ingredients as custom shopping items for a given week."""
+    data       = request.get_json() or {}
+    recipe_id  = data.get("recipe_id")
+    week_start = (data.get("week_start") or "").strip()
+    servings   = max(0.5, float(data.get("servings") or 1))
+
+    if not recipe_id:
+        return jsonify({"error": "recipe_id is required"}), 400
+    if not week_start:
+        return jsonify({"error": "week_start is required"}), 400
+
+    recipe = Recipe.query.get_or_404(recipe_id)
+
+    # Scale factor: how many times the full recipe to make
+    recipe_yield = max(recipe.servings or 1, 1)
+    import math
+    batches = math.ceil(servings / recipe_yield)
+
+    created = []
+    for ing in recipe.ingredients:
+        if ing.is_header:
+            continue
+        name = ing.name.strip()
+        if not name:
+            continue
+        qty  = (ing.quantity or "").strip() or None
+        # Scale quantity by batch count if it starts with a number
+        if qty and batches > 1:
+            import re
+            m = re.match(r'^(\d+(?:[./]\d+)?(?:\s+\d+/\d+)?)\s*(.*)', qty)
+            if m:
+                try:
+                    from fractions import Fraction
+                    amount = float(sum(Fraction(p) for p in m.group(1).split()))
+                    unit   = m.group(2).strip()
+                    scaled = amount * batches
+                    whole  = int(scaled)
+                    frac   = scaled - whole
+                    frac_str = {0.5: '½', 0.25: '¼', 0.75: '¾',
+                                round(1/3, 6): '⅓', round(2/3, 6): '⅔'}.get(round(frac, 6))
+                    num_str = (f"{whole}{frac_str}" if frac_str else
+                               f"{whole}" if frac == 0 else f"{scaled:g}")
+                    qty = f"{num_str} {unit}".strip() if unit else num_str
+                except Exception:
+                    pass  # leave qty unscaled if parsing fails
+
+        item = CustomShoppingItem(
+            user_id    = current_user.id,
+            week_start = week_start,
+            name       = name,
+            quantity   = qty,
+            category   = _categorize(name),
+        )
+        db.session.add(item)
+        created.append(item)
+
+    db.session.commit()
+    log.info("SHOPPING_FROM_RECIPE: user=%s recipe=%r week=%s items=%d",
+             current_user.username, recipe.name, week_start, len(created))
+    return jsonify({"added": len(created), "recipe": recipe.name}), 201
 
 
 # ── Custom shopping items ──────────────────────────────────────────────────────

@@ -280,27 +280,27 @@
 
 <!-- Modal: Ad Hoc Meal -->
 <div class="modal fade" id="modal-adhoc-meal" tabindex="-1">
-  <div class="modal-dialog">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title"><i class="bi bi-pencil-square me-1"></i>Ad Hoc Meal</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
-        <div class="mb-3">
-          <label class="form-label fw-medium" for="adhoc-name">Label <span class="text-danger">*</span></label>
-          <div class="input-group">
-            <input type="text" class="form-control" id="adhoc-name" placeholder="e.g. 2 cups oatmeal">
-            <button type="button" class="btn btn-outline-secondary" id="btn-adhoc-lookup"
-                    title="Look up in USDA database">
-              <i class="bi bi-search"></i>
-            </button>
+
+        <!-- Name + Servings -->
+        <div class="row g-3 mb-3">
+          <div class="col-sm-8">
+            <label class="form-label fw-medium" for="adhoc-name">Label <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" id="adhoc-name" placeholder="e.g. Chicken Stir Fry">
           </div>
-          <div class="form-text">Include quantity for scaled nutrition (e.g. "2 cups oatmeal")</div>
+          <div class="col-sm-4">
+            <label class="form-label fw-medium" for="adhoc-servings">Servings</label>
+            <input type="number" class="form-control" id="adhoc-servings" value="1" min="1" step="1">
+          </div>
         </div>
-        <!-- Inline USDA picker (shown when lookup button is clicked) -->
-        <div id="adhoc-picker-panel" class="d-none border rounded bg-light mb-3"
-             style="max-height:300px;overflow-y:auto"></div>
+
+        <!-- Date + Meal -->
         <div class="row g-2 mb-3">
           <div class="col-6">
             <label class="form-label fw-medium" for="adhoc-date">Date</label>
@@ -316,35 +316,94 @@
             </select>
           </div>
         </div>
-        <div class="small fw-semibold text-muted text-uppercase mb-2" style="font-size:.7rem;letter-spacing:.05em">
-          Nutrition <span class="fw-normal text-lowercase">(optional)</span>
+
+        <!-- Ingredients -->
+        <div class="mb-3">
+          <label class="form-label fw-medium">Ingredients</label>
+          <div id="ah-ingredients">
+            <!-- rows injected by JS -->
+          </div>
+          <div class="d-flex gap-2 mt-2 flex-wrap">
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="ah-add-ingredient">
+              <i class="bi bi-plus-lg me-1"></i>Add Ingredient
+            </button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="ah-add-header">
+              <i class="bi bi-text-indent-left me-1"></i>Add Section
+            </button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="ah-paste-toggle">
+              <i class="bi bi-clipboard me-1"></i>Paste List
+            </button>
+          </div>
+          <div id="ah-paste-area" class="mt-2 d-none">
+            <textarea class="form-control form-control-sm font-monospace" id="ah-paste-input" rows="5"
+                      placeholder="Paste ingredients one per line, e.g.&#10;1 1/2 cups rolled oats&#10;2 tablespoons honey"></textarea>
+            <button type="button" class="btn btn-success btn-sm mt-1" id="ah-paste-parse">
+              <i class="bi bi-check2 me-1"></i>Add to list
+            </button>
+          </div>
         </div>
-        <div class="row g-2 mb-3">
-          <div class="col-6 col-sm-4">
-            <label class="form-label small mb-1" for="adhoc-calories">Calories</label>
-            <input type="number" class="form-control form-control-sm" id="adhoc-calories" min="0" placeholder="kcal">
+
+        <!-- Inline nutrition/picker panel (hidden until Check Nutrition or row lookup) -->
+        <div id="ah-nutrition-panel" class="d-none border rounded p-3 bg-light mb-3">
+          <div class="small fw-semibold text-muted text-uppercase mb-2" style="font-size:.7rem;letter-spacing:.05em">
+            Estimated Nutrition <span class="badge badge-usda ms-1">USDA estimate</span>
           </div>
-          <div class="col-6 col-sm-4">
-            <label class="form-label small mb-1" for="adhoc-protein">Protein (g)</label>
-            <input type="number" class="form-control form-control-sm" id="adhoc-protein" min="0" placeholder="g">
-          </div>
-          <div class="col-6 col-sm-4">
-            <label class="form-label small mb-1" for="adhoc-carbs">Carbs (g)</label>
-            <input type="number" class="form-control form-control-sm" id="adhoc-carbs" min="0" placeholder="g">
-          </div>
-          <div class="col-6 col-sm-4">
-            <label class="form-label small mb-1" for="adhoc-fat">Fat (g)</label>
-            <input type="number" class="form-control form-control-sm" id="adhoc-fat" min="0" placeholder="g">
-          </div>
-          <div class="col-6 col-sm-4">
-            <label class="form-label small mb-1" for="adhoc-fiber">Fiber (g)</label>
-            <input type="number" class="form-control form-control-sm" id="adhoc-fiber" min="0" placeholder="g">
-          </div>
+          <div id="ah-nutrition-values"></div>
         </div>
+
+        <!-- Manual nutrition (per serving) -->
+        <div class="mb-3">
+          <label class="form-label fw-medium">
+            Nutrition per serving <span class="text-muted fw-normal small">(whole meal — or leave blank to estimate from ingredients)</span>
+          </label>
+          <div class="row g-2">
+            <div class="col-6 col-sm-3">
+              <label class="form-label small text-muted mb-1" style="font-size:.72rem">Calories</label>
+              <div class="input-group input-group-sm">
+                <input type="number" class="form-control ah-macro" id="adhoc-calories" placeholder="0" min="0" step="1">
+                <span class="input-group-text text-muted" style="font-size:.72rem">kcal</span>
+              </div>
+            </div>
+            <div class="col-6 col-sm-3">
+              <label class="form-label small text-muted mb-1" style="font-size:.72rem">Protein</label>
+              <div class="input-group input-group-sm">
+                <input type="number" class="form-control ah-macro" id="adhoc-protein" placeholder="0" min="0" step="0.1">
+                <span class="input-group-text text-muted" style="font-size:.72rem">g</span>
+              </div>
+            </div>
+            <div class="col-6 col-sm-3">
+              <label class="form-label small text-muted mb-1" style="font-size:.72rem">Carbs</label>
+              <div class="input-group input-group-sm">
+                <input type="number" class="form-control ah-macro" id="adhoc-carbs" placeholder="0" min="0" step="0.1">
+                <span class="input-group-text text-muted" style="font-size:.72rem">g</span>
+              </div>
+            </div>
+            <div class="col-6 col-sm-3">
+              <label class="form-label small text-muted mb-1" style="font-size:.72rem">Fat</label>
+              <div class="input-group input-group-sm">
+                <input type="number" class="form-control ah-macro" id="adhoc-fat" placeholder="0" min="0" step="0.1">
+                <span class="input-group-text text-muted" style="font-size:.72rem">g</span>
+              </div>
+            </div>
+            <div class="col-6 col-sm-3">
+              <label class="form-label small text-muted mb-1" style="font-size:.72rem">Fiber <span class="text-muted" style="font-size:.65rem">(opt)</span></label>
+              <div class="input-group input-group-sm">
+                <input type="number" class="form-control ah-macro" id="adhoc-fiber" placeholder="0" min="0" step="0.1">
+                <span class="input-group-text text-muted" style="font-size:.72rem">g</span>
+              </div>
+            </div>
+          </div>
+          <div id="adhoc-per-serving-preview" class="text-muted mt-1 d-none" style="font-size:.75rem"></div>
+        </div>
+
         <div id="adhoc-error" class="alert alert-danger d-none"></div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-outline-success" id="btn-adhoc-check">
+          <span class="spinner-border spinner-border-sm d-none me-1" id="adhoc-check-spinner"></span>
+          <i class="bi bi-search me-1" id="adhoc-check-icon"></i>Check Nutrition
+        </button>
         <button class="btn btn-success" id="btn-adhoc-submit">
           <span class="spinner-border spinner-border-sm d-none me-1" id="adhoc-spinner"></span>
           Add to Planner

@@ -256,6 +256,8 @@ def update_entry(entry_id):
         entry.date = date.fromisoformat(data["date"])
     if "meal_type" in data:
         entry.meal_type = data["meal_type"]
+    if "servings" in data:
+        entry.servings = max(0.5, float(data["servings"] or 1))
     db.session.commit()
     log.info("MENU_UPDATE_ADHOC: user=%s entry_id=%d", current_user.username, entry.id)
     return jsonify(entry.to_dict(viewer_id=current_user.id))

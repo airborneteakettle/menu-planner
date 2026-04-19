@@ -1,7 +1,7 @@
 import { api }                               from './api.js';
 import { getWeekDates, formatDate, today,
          toISODate, toast, MEAL_TYPES }       from './utils.js';
-import { openRecipeModal }                    from './recipes.js';
+import { openRecipeModal, UNITS, parseIngredientLine, escHtml } from './recipes.js';
 
 let _el        = null;
 let weekOffset = 0;
@@ -469,65 +469,177 @@ function openRecipePicker(date, meal) {
   });
 }
 
-// ── Ad Hoc Meal USDA Lookup ───────────────────────────────────────────────────
+// ── Ad Hoc Meal: ingredient rows ──────────────────────────────────────────────
 
-let _adhocPickerOffset     = 0;
-let _adhocPickerCandidates = [];
-let _adhocPickerIngredient = '';
+// Picker state for row-level USDA lookup inside the ad hoc modal
+let _ahPickerIngRow    = null;   // the row element being looked up
+let _ahPickerOffset    = 0;
+let _ahPickerCandidates = [];
+let _ahPickerIngredient = '';
 
-function _adhocEscHtml(s) {
-  return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+function ahAddIngredientRow(amount = '', unit = '', name = '') {
+  const container = document.getElementById('ah-ingredients');
+  const row = document.createElement('div');
+  row.className = 'input-group input-group-sm mb-1 ah-ingredient-row';
+  row.innerHTML = `
+    <input  type="text" class="form-control ah-ing-amount" placeholder="Qty"
+            style="max-width:72px" value="${escHtml(amount)}">
+    <select class="form-select ah-ing-unit" style="max-width:100px">
+      ${UNITS.map(u => `<option value="${u}"${u === unit ? ' selected' : ''}>${u || '—'}</option>`).join('')}
+    </select>
+    <input  type="text" class="form-control ah-ing-name" placeholder="Ingredient name"
+            value="${escHtml(name)}">
+    <button type="button" class="btn btn-outline-secondary ah-ing-lookup" tabindex="-1"
+            title="Look up in USDA database">
+      <i class="bi bi-search"></i>
+    </button>
+    <button type="button" class="btn btn-outline-secondary ah-remove-row" tabindex="-1">
+      <i class="bi bi-x"></i>
+    </button>`;
+
+  row.querySelector('.ah-remove-row').addEventListener('click', () => {
+    if (container.querySelectorAll('.ah-ingredient-row').length > 1) row.remove();
+  });
+
+  row.querySelector('.ah-ing-lookup').addEventListener('click', () => ahOpenRowPicker(row));
+
+  row.querySelector('.ah-ing-name').addEventListener('input', () => {
+    if (row._preNutrition) {
+      row._preNutrition = null;
+      const btn = row.querySelector('.ah-ing-lookup');
+      btn.innerHTML = '<i class="bi bi-search"></i>';
+      btn.className  = 'btn btn-outline-secondary ah-ing-lookup';
+      btn.title      = 'Look up in USDA database';
+    }
+  });
+
+  row.querySelector('.ah-ing-name').addEventListener('keydown', e => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const rows = [...container.querySelectorAll('.ah-ingredient-row')];
+    const next = rows[rows.indexOf(row) + 1];
+    if (next) next.querySelector('.ah-ing-amount').focus();
+    else { ahAddIngredientRow(); container.lastElementChild.querySelector('.ah-ing-amount').focus(); }
+  });
+
+  container.appendChild(row);
 }
 
-function openAdhocPicker() {
-  const name = document.getElementById('adhoc-name').value.trim();
-  if (!name) { document.getElementById('adhoc-name').focus(); return; }
-  _adhocPickerIngredient = name;
-  _adhocPickerOffset     = 0;
-  _adhocPickerCandidates = [];
-  loadAdhocPickerPage(0);
+function ahAddHeaderRow(name = '') {
+  const container = document.getElementById('ah-ingredients');
+  const row = document.createElement('div');
+  row.className = 'input-group input-group-sm mb-1 ah-ingredient-row ah-header-row';
+  row.innerHTML = `
+    <span class="input-group-text bg-light text-muted small" style="font-size:0.7rem;letter-spacing:.05em;white-space:nowrap">SECTION</span>
+    <input type="text" class="form-control fw-semibold ah-ing-header" placeholder="Section name" value="${escHtml(name)}">
+    <button type="button" class="btn btn-outline-secondary ah-remove-row" tabindex="-1">
+      <i class="bi bi-x"></i>
+    </button>`;
+  row.querySelector('.ah-remove-row').addEventListener('click', () => row.remove());
+  container.appendChild(row);
+  if (!name) setTimeout(() => row.querySelector('.ah-ing-header').focus(), 50);
 }
 
-async function loadAdhocPickerPage(offset) {
-  _adhocPickerOffset = offset;
-  const panel = document.getElementById('adhoc-picker-panel');
+function ahGetIngredients() {
+  return [...document.querySelectorAll('.ah-ingredient-row')]
+    .map(row => {
+      if (row.classList.contains('ah-header-row')) {
+        const name = row.querySelector('.ah-ing-header').value.trim();
+        return name ? { quantity: null, name, is_header: true } : null;
+      }
+      const amount = row.querySelector('.ah-ing-amount').value.trim();
+      const unit   = row.querySelector('.ah-ing-unit').value;
+      const name   = row.querySelector('.ah-ing-name').value.trim();
+      const qty    = [amount, unit].filter(Boolean).join(' ') || null;
+      return { quantity: qty, name, preNutrition: row._preNutrition || null };
+    })
+    .filter(i => i?.name);
+}
+
+function ahParsePasted() {
+  const text = document.getElementById('ah-paste-input').value;
+  const lines = text.split(/\r?\n/);
+  const parsed = lines.map(parseIngredientLine).filter(Boolean);
+  if (!parsed.length) return;
+
+  const container = document.getElementById('ah-ingredients');
+  container.querySelectorAll('.ah-ingredient-row').forEach(row => {
+    const input = row.classList.contains('ah-header-row') ? row.querySelector('.ah-ing-header') : null;
+    const hasContent = input
+      ? input.value.trim()
+      : (row.querySelector('.ah-ing-amount').value.trim() || row.querySelector('.ah-ing-name').value.trim());
+    if (!hasContent) row.remove();
+  });
+
+  for (const { amount, unit, name, is_header } of parsed) {
+    if (is_header) ahAddHeaderRow(name);
+    else ahAddIngredientRow(amount, unit, name);
+  }
+
+  document.getElementById('ah-paste-input').value = '';
+  document.getElementById('ah-paste-area').classList.add('d-none');
+}
+
+// ── Ad Hoc: per-row USDA picker ───────────────────────────────────────────────
+
+function ahOpenRowPicker(row) {
+  _ahPickerIngRow = row;
+  const amount = row.querySelector('.ah-ing-amount').value.trim();
+  const unit   = row.querySelector('.ah-ing-unit').value;
+  const name   = row.querySelector('.ah-ing-name').value.trim();
+  if (!name) { row.querySelector('.ah-ing-name').focus(); return; }
+  _ahPickerIngredient = [amount, unit, name].filter(Boolean).join(' ');
+  _ahPickerOffset     = 0;
+  _ahPickerCandidates = [];
+  ahLoadPickerPage(0);
+}
+
+async function ahLoadPickerPage(offset) {
+  _ahPickerOffset = offset;
+  const panel = document.getElementById('ah-nutrition-panel');
   panel.classList.remove('d-none');
-  panel.innerHTML = `<div class="loading-state py-3"><div class="spinner-border spinner-border-sm text-success"></div></div>`;
+  panel.innerHTML = `
+    <div class="d-flex align-items-center gap-2 mb-2 border-bottom pb-2">
+      <button class="btn btn-sm btn-outline-secondary flex-shrink-0" id="ah-picker-back">
+        <i class="bi bi-arrow-left me-1"></i>Back
+      </button>
+      <span class="small fw-medium text-truncate">${escHtml(_ahPickerIngredient)}</span>
+    </div>
+    <div id="ah-picker-body">
+      <div class="loading-state py-3"><div class="spinner-border spinner-border-sm text-success"></div></div>
+    </div>`;
+
+  document.getElementById('ah-picker-back').addEventListener('click', () => {
+    panel.classList.add('d-none');
+    panel.innerHTML = '';
+  });
 
   try {
-    const data = await api.recipes.searchIngredient(_adhocPickerIngredient, offset);
-    _adhocPickerCandidates = data.candidates;
-    panel.innerHTML = renderAdhocPickerPage(data);
+    const data = await api.recipes.searchIngredient(_ahPickerIngredient, offset);
+    _ahPickerCandidates = data.candidates;
+    const body = document.getElementById('ah-picker-body');
+    if (!body) return;
+    body.innerHTML = ahRenderPickerPage(data);
 
-    panel.querySelectorAll('.btn-adhoc-select').forEach(btn => {
-      btn.addEventListener('click', () => {
-        applyAdhocSelection(_adhocPickerCandidates[+btn.dataset.idx]);
-      });
+    body.querySelectorAll('.ah-picker-select').forEach(btn => {
+      btn.addEventListener('click', () => ahApplyRowPreselection(_ahPickerIngRow, _ahPickerCandidates[+btn.dataset.idx]));
     });
-    const nextBtn = panel.querySelector('#adhoc-picker-next');
-    if (nextBtn) {
-      nextBtn.addEventListener('click', () => loadAdhocPickerPage(+nextBtn.dataset.offset));
-    }
+    const nextBtn = body.querySelector('#ah-picker-next');
+    if (nextBtn) nextBtn.addEventListener('click', () => ahLoadPickerPage(+nextBtn.dataset.offset));
   } catch (e) {
-    panel.innerHTML = `<div class="alert alert-danger m-2">${_adhocEscHtml(e.message)}</div>`;
+    const body = document.getElementById('ah-picker-body');
+    if (body) body.innerHTML = `<div class="alert alert-danger m-2">${escHtml(e.message)}</div>`;
   }
 }
 
-function renderAdhocPickerPage(data) {
-  const { food_name, grams, candidates, has_more, offset, total } = data;
+function ahRenderPickerPage({ food_name, grams, candidates, has_more, offset, total }) {
+  if (!candidates.length)
+    return `<p class="text-muted small p-3 mb-0">No results found for "${escHtml(food_name)}".</p>`;
 
-  if (!candidates.length) {
-    return `<p class="text-muted small p-3 mb-0">No results found for "${_adhocEscHtml(food_name)}".</p>`;
-  }
-
-  const unit   = grams != null ? `scaled to ${grams}g` : 'per 100g';
+  const unit = grams != null ? `scaled to ${grams}g` : 'per 100g';
   const header = `
-    <div class="d-flex align-items-center justify-content-between px-3 pt-2 pb-1 border-bottom"
-         style="font-size:.75rem;color:#666">
-      <span>Showing ${offset + 1}–${offset + candidates.length}${total > 0 ? ' of ' + total : ''} · values ${unit}</span>
-      <button class="btn btn-link btn-sm p-0 text-muted" id="adhoc-picker-close" style="font-size:.75rem">
-        Close
-      </button>
+    <div class="px-3 pt-2 pb-1 border-bottom bg-light" style="font-size:.75rem;color:#666">
+      Showing ${offset + 1}–${offset + candidates.length}${total > 0 ? ' of ' + total : ''} &middot; values ${unit}
     </div>`;
 
   const rows = candidates.map((c, idx) => {
@@ -536,26 +648,25 @@ function renderAdhocPickerPage(data) {
       : c.dataType === 'Branded'
         ? 'bg-warning-subtle text-warning-emphasis'
         : 'bg-secondary-subtle text-secondary-emphasis';
-    const calStr  = c.calories  != null ? Math.round(c.calories)  + ' kcal' : '—';
+    const calStr  = c.calories  != null ? Math.round(c.calories) + ' kcal' : '—';
     const protStr = c.protein_g != null ? c.protein_g + 'g prot'  : '';
     const carbStr = c.carbs_g   != null ? c.carbs_g   + 'g carbs' : '';
     const fatStr  = c.fat_g     != null ? c.fat_g     + 'g fat'   : '';
     const macros  = [calStr, protStr, carbStr, fatStr].filter(Boolean).join(' · ');
     const servingLabel = c.serving_size_g
-      ? `<span class="text-muted" style="font-size:.65rem">${c.serving_size_g}g/serving</span>`
-      : '';
+      ? `<span class="text-muted" style="font-size:.65rem">${c.serving_size_g}g/serving</span>` : '';
     return `
-      <div class="border-bottom px-3 py-2" style="transition:background .1s" onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background=''">
+      <div class="picker-candidate border-bottom px-3 py-2">
         <div class="d-flex align-items-start gap-2">
           <div class="flex-grow-1 min-w-0">
-            <div class="fw-medium lh-sm" style="font-size:.82rem">${_adhocEscHtml(c.description)}</div>
+            <div class="fw-medium lh-sm picker-desc">${escHtml(c.description)}</div>
             <div class="d-flex align-items-center gap-2 mt-1 flex-wrap">
-              <span class="badge ${dtClass}" style="font-size:.6rem">${_adhocEscHtml(c.dataType)}</span>
+              <span class="badge ${dtClass}" style="font-size:.6rem">${escHtml(c.dataType)}</span>
               ${servingLabel}
-              <span class="text-muted" style="font-size:.72rem">${_adhocEscHtml(macros)}</span>
+              <span class="text-muted picker-macros">${escHtml(macros)}</span>
             </div>
           </div>
-          <button class="btn btn-outline-success btn-sm flex-shrink-0 btn-adhoc-select"
+          <button class="btn btn-outline-success btn-sm flex-shrink-0 ah-picker-select"
                   data-idx="${idx}">Select</button>
         </div>
       </div>`;
@@ -563,7 +674,7 @@ function renderAdhocPickerPage(data) {
 
   const moreBtn = has_more ? `
     <div class="text-center p-3">
-      <button class="btn btn-outline-secondary btn-sm" id="adhoc-picker-next"
+      <button class="btn btn-outline-secondary btn-sm" id="ah-picker-next"
               data-offset="${offset + candidates.length}">
         <i class="bi bi-arrow-down me-1"></i>Next 10
       </button>
@@ -572,23 +683,169 @@ function renderAdhocPickerPage(data) {
   return header + rows + moreBtn;
 }
 
-function applyAdhocSelection(candidate) {
-  const fmt1 = v => (v != null && v > 0) ? String(Math.round(v * 10) / 10) : '';
-  document.getElementById('adhoc-calories').value = candidate.calories != null ? String(Math.round(candidate.calories)) : '';
-  document.getElementById('adhoc-protein').value  = fmt1(candidate.protein_g);
-  document.getElementById('adhoc-carbs').value    = fmt1(candidate.carbs_g);
-  document.getElementById('adhoc-fat').value      = fmt1(candidate.fat_g);
-  document.getElementById('adhoc-fiber').value    = fmt1(candidate.fiber_g);
-
-  // Update lookup button to show it's been linked
-  const btn = document.getElementById('btn-adhoc-lookup');
+function ahApplyRowPreselection(row, candidate) {
+  row._preNutrition = {
+    description: candidate.description,
+    calories:    candidate.calories,
+    protein_g:   candidate.protein_g,
+    carbs_g:     candidate.carbs_g,
+    fat_g:       candidate.fat_g,
+    fiber_g:     candidate.fiber_g,
+  };
+  const btn = row.querySelector('.ah-ing-lookup');
   btn.innerHTML = '<i class="bi bi-check-lg"></i>';
-  btn.classList.remove('btn-outline-secondary');
-  btn.classList.add('btn-success');
-  btn.title = candidate.description;
+  btn.className  = 'btn btn-success ah-ing-lookup';
+  btn.title      = candidate.description;
 
-  // Close the picker panel
-  document.getElementById('adhoc-picker-panel').classList.add('d-none');
+  const panel = document.getElementById('ah-nutrition-panel');
+  panel.classList.add('d-none');
+  panel.innerHTML = '';
+}
+
+// ── Ad Hoc: Check Nutrition ───────────────────────────────────────────────────
+
+async function ahCheckNutrition() {
+  const errEl   = document.getElementById('adhoc-error');
+  const spinner = document.getElementById('adhoc-check-spinner');
+  const icon    = document.getElementById('adhoc-check-icon');
+  const btn     = document.getElementById('btn-adhoc-check');
+  const panel   = document.getElementById('ah-nutrition-panel');
+
+  const ingredients = ahGetIngredients().filter(i => !i.is_header);
+  if (!ingredients.length) {
+    errEl.textContent = 'Add at least one ingredient before checking nutrition.';
+    errEl.classList.remove('d-none');
+    return;
+  }
+
+  errEl.classList.add('d-none');
+  spinner.classList.remove('d-none');
+  icon.classList.add('d-none');
+  btn.disabled = true;
+
+  try {
+    const { totals, breakdown } = await api.recipes.estimateNutrition(ingredients);
+
+    // Apply any row-level pre-selections
+    const KEYS = ['calories', 'protein_g', 'fat_g', 'carbs_g', 'fiber_g'];
+    ingredients.forEach((ing, idx) => {
+      if (ing.preNutrition && idx < breakdown.length) {
+        breakdown[idx] = {
+          ...breakdown[idx], found: true,
+          calories: ing.preNutrition.calories, protein_g: ing.preNutrition.protein_g,
+          carbs_g:  ing.preNutrition.carbs_g,  fat_g:     ing.preNutrition.fat_g,
+          fiber_g:  ing.preNutrition.fiber_g,  _override: ing.preNutrition.description,
+        };
+      }
+    });
+
+    const computed = Object.fromEntries(KEYS.map(k => [k, 0]));
+    for (const row of breakdown) {
+      if (row.found || row._override) for (const k of KEYS) computed[k] += row[k] || 0;
+    }
+    for (const k of KEYS) computed[k] = Math.round(computed[k] * 10) / 10;
+
+    // Fill per-serving fields (total ÷ servings)
+    const servings = +document.getElementById('adhoc-servings').value || 1;
+    ahApplyNutritionToForm(computed, servings);
+
+    // Show breakdown table
+    panel.classList.remove('d-none');
+    panel.innerHTML = ahRenderBreakdown(computed, breakdown, servings);
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.classList.remove('d-none');
+  } finally {
+    spinner.classList.add('d-none');
+    icon.classList.remove('d-none');
+    btn.disabled = false;
+  }
+}
+
+function ahApplyNutritionToForm(totals, servings) {
+  const s   = servings || 1;
+  const fmtN = v => (v != null && v > 0) ? String(Math.round((v / s) * 10) / 10) : '';
+  document.getElementById('adhoc-calories').value = totals.calories ? String(Math.round(totals.calories / s)) : '';
+  document.getElementById('adhoc-protein').value  = fmtN(totals.protein_g);
+  document.getElementById('adhoc-carbs').value    = fmtN(totals.carbs_g);
+  document.getElementById('adhoc-fat').value      = fmtN(totals.fat_g);
+  document.getElementById('adhoc-fiber').value    = fmtN(totals.fiber_g);
+  ahUpdatePerServingPreview();
+}
+
+function ahUpdatePerServingPreview() {
+  const preview  = document.getElementById('adhoc-per-serving-preview');
+  const servings = +document.getElementById('adhoc-servings').value || 1;
+  const cals  = parseFloat(document.getElementById('adhoc-calories').value);
+  const prot  = parseFloat(document.getElementById('adhoc-protein').value);
+  const carbs = parseFloat(document.getElementById('adhoc-carbs').value);
+  const fat   = parseFloat(document.getElementById('adhoc-fat').value);
+  const anyFilled = [cals, prot, carbs, fat].some(v => !isNaN(v) && v > 0);
+  if (!anyFilled || servings <= 1) { preview.classList.add('d-none'); return; }
+  preview.textContent =
+    `Stored per serving: ${isNaN(cals) ? '—' : Math.round(cals)} kcal · ` +
+    `${isNaN(prot) ? '—' : prot}g protein · ${isNaN(carbs) ? '—' : carbs}g carbs · ${isNaN(fat) ? '—' : fat}g fat`;
+  preview.classList.remove('d-none');
+}
+
+function ahRenderBreakdown(totals, breakdown, servings) {
+  const fmt = v => v == null ? '<span class="text-muted">—</span>' : Math.round(v * 10) / 10;
+  const s   = servings || 1;
+
+  const rows = breakdown.map(row => `
+    <tr class="${row.found || row._override ? '' : 'text-muted fst-italic'}">
+      <td class="ps-0">
+        ${row.quantity ? `<span class="text-muted me-1" style="font-size:.78rem">${escHtml(row.quantity)}</span>` : ''}
+        ${escHtml(row.name)}
+        ${row._override
+          ? `<br><span class="text-muted" style="font-size:.68rem">→ ${escHtml(row._override)}</span>`
+          : ''}
+        ${!row.found && !row._override
+          ? `<span class="badge bg-warning-subtle text-warning-emphasis ms-1" style="font-size:.65rem">not found</span>`
+          : ''}
+      </td>
+      <td class="text-end">${fmt(row.calories)}</td>
+      <td class="text-end">${fmt(row.protein_g)}</td>
+      <td class="text-end">${fmt(row.carbs_g)}</td>
+      <td class="text-end">${fmt(row.fat_g)}</td>
+    </tr>`).join('');
+
+  return `
+    <div class="small fw-semibold text-muted text-uppercase mb-2" style="font-size:.7rem;letter-spacing:.05em">
+      Estimated Nutrition
+      <span class="badge badge-usda ms-1 text-lowercase" style="font-size:.65rem">USDA estimate</span>
+    </div>
+    <div style="max-height:200px;overflow-y:auto">
+      <table class="table table-sm table-borderless mb-0" style="font-size:.8rem">
+        <thead>
+          <tr class="text-muted border-bottom">
+            <th class="ps-0 fw-normal">Ingredient</th>
+            <th class="text-end fw-normal">kcal</th>
+            <th class="text-end fw-normal">Prot</th>
+            <th class="text-end fw-normal">Carbs</th>
+            <th class="text-end fw-normal">Fat</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+        <tfoot>
+          <tr class="border-top fw-semibold">
+            <td class="ps-0">Total</td>
+            <td class="text-end">${Math.round(totals.calories)}</td>
+            <td class="text-end">${fmt(totals.protein_g)}g</td>
+            <td class="text-end">${fmt(totals.carbs_g)}g</td>
+            <td class="text-end">${fmt(totals.fat_g)}g</td>
+          </tr>
+          ${s > 1 ? `
+          <tr class="text-muted" style="font-size:.72rem">
+            <td class="ps-0">Per serving (÷${s})</td>
+            <td class="text-end">${Math.round(totals.calories / s)}</td>
+            <td class="text-end">${fmt(totals.protein_g / s)}g</td>
+            <td class="text-end">${fmt(totals.carbs_g   / s)}g</td>
+            <td class="text-end">${fmt(totals.fat_g     / s)}g</td>
+          </tr>` : ''}
+        </tfoot>
+      </table>
+    </div>`;
 }
 
 // ── Ad Hoc Meal Modal ─────────────────────────────────────────────────────────
@@ -598,27 +855,51 @@ let _adhocEditId = null;  // null = create mode; entry id = edit mode
 export function openAdHocModal(date, meal, entry = null) {
   _adhocEditId = entry ? entry.id : null;
   const n = entry?.nutrition || {};
+
+  // Populate header fields
   document.getElementById('adhoc-name').value      = entry?.recipe_name || '';
+  document.getElementById('adhoc-servings').value  = entry?.servings || 1;
   document.getElementById('adhoc-date').value      = entry?.date || date;
   document.getElementById('adhoc-meal-type').value = entry?.meal_type || meal || 'dinner';
-  document.getElementById('adhoc-calories').value  = n.calories  != null ? n.calories  : '';
-  document.getElementById('adhoc-protein').value   = n.protein_g != null ? n.protein_g : '';
-  document.getElementById('adhoc-carbs').value     = n.carbs_g   != null ? n.carbs_g   : '';
-  document.getElementById('adhoc-fat').value       = n.fat_g     != null ? n.fat_g     : '';
-  document.getElementById('adhoc-fiber').value     = n.fiber_g   != null ? n.fiber_g   : '';
+
+  // Nutrition fields hold per-serving values
+  document.getElementById('adhoc-calories').value = n.calories  != null ? Math.round(n.calories  * 10) / 10 : '';
+  document.getElementById('adhoc-protein').value  = n.protein_g != null ? Math.round(n.protein_g * 10) / 10 : '';
+  document.getElementById('adhoc-carbs').value    = n.carbs_g   != null ? Math.round(n.carbs_g   * 10) / 10 : '';
+  document.getElementById('adhoc-fat').value      = n.fat_g     != null ? Math.round(n.fat_g     * 10) / 10 : '';
+  document.getElementById('adhoc-fiber').value    = n.fiber_g   != null ? Math.round(n.fiber_g   * 10) / 10 : '';
+
+  // Reset ingredient rows
+  const container = document.getElementById('ah-ingredients');
+  container.innerHTML = '';
+  ahAddIngredientRow();
+  ahAddIngredientRow();
+
+  // Reset nutrition panel
+  const panel = document.getElementById('ah-nutrition-panel');
+  panel.classList.add('d-none');
+  panel.innerHTML = `
+    <div class="small fw-semibold text-muted text-uppercase mb-2" style="font-size:.7rem;letter-spacing:.05em">
+      Estimated Nutrition <span class="badge badge-usda ms-1">USDA estimate</span>
+    </div>
+    <div id="ah-nutrition-values"></div>`;
+
+  document.getElementById('adhoc-per-serving-preview').classList.add('d-none');
   document.getElementById('adhoc-error').classList.add('d-none');
-  document.getElementById('adhoc-picker-panel').classList.add('d-none');
-  // Reset lookup button to default state
-  const lookupBtn = document.getElementById('btn-adhoc-lookup');
-  lookupBtn.innerHTML = '<i class="bi bi-search"></i>';
-  lookupBtn.className  = 'btn btn-outline-secondary';
-  lookupBtn.title      = 'Look up in USDA database';
-  // Update submit button label and modal title for edit vs create
+  document.getElementById('ah-paste-area').classList.add('d-none');
+  document.getElementById('ah-paste-input').value = '';
+
+  // Reset Check Nutrition button
+  document.getElementById('adhoc-check-icon').classList.remove('d-none');
+  document.getElementById('adhoc-check-spinner').classList.add('d-none');
+
+  // Update submit button and modal title for edit vs create
   document.getElementById('btn-adhoc-submit').innerHTML =
     `<span class="spinner-border spinner-border-sm d-none me-1" id="adhoc-spinner"></span>` +
     (_adhocEditId ? 'Save Changes' : 'Add to Planner');
   document.querySelector('#modal-adhoc-meal .modal-title').innerHTML =
     `<i class="bi bi-pencil-square me-1"></i>${_adhocEditId ? 'Edit Ad Hoc Meal' : 'Ad Hoc Meal'}`;
+
   bootstrap.Modal.getOrCreateInstance(document.getElementById('modal-adhoc-meal')).show();
   setTimeout(() => document.getElementById('adhoc-name').focus(), 300);
 }
@@ -628,23 +909,19 @@ document.addEventListener('DOMContentLoaded', () => {
   const submitBtn = document.getElementById('btn-adhoc-submit');
   if (!submitBtn) return;
 
-  // Lookup button
-  document.getElementById('btn-adhoc-lookup').addEventListener('click', openAdhocPicker);
-  // Typing clears the linked state
-  document.getElementById('adhoc-name').addEventListener('input', () => {
-    const btn = document.getElementById('btn-adhoc-lookup');
-    if (btn.classList.contains('btn-success')) {
-      btn.innerHTML = '<i class="bi bi-search"></i>';
-      btn.className  = 'btn btn-outline-secondary';
-      btn.title      = 'Look up in USDA database';
-    }
+  document.getElementById('ah-add-ingredient').addEventListener('click', () => ahAddIngredientRow());
+  document.getElementById('ah-add-header').addEventListener('click',     () => ahAddHeaderRow());
+  document.getElementById('btn-adhoc-check').addEventListener('click',   ahCheckNutrition);
+  document.getElementById('adhoc-servings').addEventListener('input',    ahUpdatePerServingPreview);
+  document.querySelectorAll('.ah-macro').forEach(el => el.addEventListener('input', ahUpdatePerServingPreview));
+
+  document.getElementById('ah-paste-toggle').addEventListener('click', () => {
+    const area   = document.getElementById('ah-paste-area');
+    const hidden = area.classList.toggle('d-none');
+    if (!hidden) setTimeout(() => document.getElementById('ah-paste-input').focus(), 50);
   });
-  // Close picker via event delegation (the close button is dynamically rendered)
-  document.getElementById('adhoc-picker-panel').addEventListener('click', e => {
-    if (e.target.closest('#adhoc-picker-close')) {
-      document.getElementById('adhoc-picker-panel').classList.add('d-none');
-    }
-  });
+  document.getElementById('ah-paste-parse').addEventListener('click', ahParsePasted);
+
   submitBtn.addEventListener('click', async () => {
     const name    = document.getElementById('adhoc-name').value.trim();
     const errEl   = document.getElementById('adhoc-error');
@@ -656,13 +933,15 @@ document.addEventListener('DOMContentLoaded', () => {
       document.getElementById('adhoc-name').focus();
       return;
     }
-    const num = id => { const v = parseFloat(document.getElementById(id).value); return isNaN(v) ? null : v; };
+    const num      = id => { const v = parseFloat(document.getElementById(id).value); return isNaN(v) ? null : v; };
+    const servings = +document.getElementById('adhoc-servings').value || 1;
     spinner.classList.remove('d-none');
     submitBtn.disabled = true;
     try {
       const payload = {
         date:            document.getElementById('adhoc-date').value,
         meal_type:       document.getElementById('adhoc-meal-type').value,
+        servings,
         adhoc_name:      name,
         adhoc_calories:  num('adhoc-calories'),
         adhoc_protein_g: num('adhoc-protein'),

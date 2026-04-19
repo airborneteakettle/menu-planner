@@ -787,7 +787,7 @@ function openManualAddModal() {
   setTimeout(() => document.getElementById('ar-name').focus(), 300);
 }
 
-const UNITS = [
+export const UNITS = [
   '',
   'tsp', 'tbsp',
   'cup', 'fl oz',
@@ -883,7 +883,7 @@ function _looksLikeHeader(line) {
   return true;
 }
 
-function parseIngredientLine(line) {
+export function parseIngredientLine(line) {
   line = line.trim();
   if (!line) return null;
 
@@ -1479,7 +1479,7 @@ function renderInstructions(text) {
 
 function cap(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''; }
 
-function escHtml(s) {
+export function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 function escAttr(s) {

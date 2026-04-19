@@ -72,6 +72,35 @@ async function drawGrid() {
   }
 }
 
+function dayMacros(lookup, date) {
+  let cals = 0, prot = 0, fat = 0, carbs = 0;
+  let hasAny = false;
+  for (const meal of MEAL_TYPES) {
+    for (const e of (lookup[date]?.[meal] || [])) {
+      const n = e.nutrition;
+      if (!n) continue;
+      hasAny = true;
+      cals  += n.calories  ?? 0;
+      prot  += n.protein_g ?? 0;
+      fat   += n.fat_g     ?? 0;
+      carbs += n.carbs_g   ?? 0;
+    }
+  }
+  return hasAny ? { cals: Math.round(cals), prot: Math.round(prot), fat: Math.round(fat), carbs: Math.round(carbs) } : null;
+}
+
+function daySummaryHtml(m) {
+  if (!m) return '';
+  return `
+    <div class="day-summary">
+      <span class="ds-cals">${m.cals}<span class="ds-unit">cal</span></span>
+      <span class="ds-sep">·</span>
+      <span class="ds-macro"><span class="ds-label">P</span>${m.prot}g</span>
+      <span class="ds-macro"><span class="ds-label">F</span>${m.fat}g</span>
+      <span class="ds-macro"><span class="ds-label">C</span>${m.carbs}g</span>
+    </div>`;
+}
+
 function buildWeekTable(grid, dates, lookup, todayStr) {
   const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -97,6 +126,13 @@ function buildWeekTable(grid, dates, lookup, todayStr) {
     return `<tr><td class="meal-label-cell">${meal}</td>${cells}</tr>`;
   }).join('');
 
+  const summaryCells = dates.map(date => {
+    const isToday = date === todayStr;
+    const m = dayMacros(lookup, date);
+    return `<td class="planner-day-summary${isToday ? ' today-col' : ''}">${daySummaryHtml(m)}</td>`;
+  }).join('');
+  const summaryRow = `<tr><td class="meal-label-cell" style="font-size:.7rem;color:#aaa;vertical-align:middle">Total</td>${summaryCells}</tr>`;
+
   grid.innerHTML = `
     <table class="table table-bordered planner-table mb-0">
       <thead>
@@ -105,7 +141,7 @@ function buildWeekTable(grid, dates, lookup, todayStr) {
           ${headerCols}
         </tr>
       </thead>
-      <tbody>${rows}</tbody>
+      <tbody>${rows}${summaryRow}</tbody>
     </table>`;
 
   wireGrid(grid);
@@ -135,6 +171,14 @@ function buildDayView(grid, dates, lookup, todayStr) {
       </div>`;
   }).join('');
 
+  const m = dayMacros(lookup, date);
+  const summaryCard = m ? `
+    <div class="card border-0 shadow-sm mt-1 mb-2">
+      <div class="card-body py-2 px-3 day-summary-card">
+        ${daySummaryHtml(m)}
+      </div>
+    </div>` : '';
+
   grid.innerHTML = `
     <div class="d-flex align-items-center gap-2 mb-3">
       <button class="btn btn-outline-secondary btn-sm flex-shrink-0" id="btn-prev-day" title="Previous day">
@@ -148,7 +192,8 @@ function buildDayView(grid, dates, lookup, todayStr) {
         <i class="bi bi-chevron-right"></i>
       </button>
     </div>
-    ${mealCards}`;
+    ${mealCards}
+    ${summaryCard}`;
 
   document.getElementById('btn-prev-day').addEventListener('click', () => {
     if (dayIndex > 0) {

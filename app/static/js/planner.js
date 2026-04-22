@@ -561,6 +561,7 @@ function ahAddIngredientRow(amount = '', unit = '', name = '') {
   row.querySelector('.ah-ing-name').addEventListener('keydown', e => {
     if (e.key !== 'Enter') return;
     e.preventDefault();
+    e.stopPropagation();
     const rows = [...container.querySelectorAll('.ah-ingredient-row')];
     const next = rows[rows.indexOf(row) + 1];
     if (next) next.querySelector('.ah-ing-amount').focus();
@@ -954,8 +955,16 @@ document.addEventListener('DOMContentLoaded', () => {
   const submitBtn = document.getElementById('btn-adhoc-submit');
   if (!submitBtn) return;
 
-  document.getElementById('ah-add-ingredient').addEventListener('click', () => ahAddIngredientRow());
-  document.getElementById('ah-add-header').addEventListener('click',     () => ahAddHeaderRow());
+  let _addRowPending = false;
+  function guardedAddRow(fn) {
+    if (_addRowPending) return;
+    _addRowPending = true;
+    fn();
+    requestAnimationFrame(() => { _addRowPending = false; });
+  }
+
+  document.getElementById('ah-add-ingredient').addEventListener('click', e => { e.stopPropagation(); guardedAddRow(ahAddIngredientRow); });
+  document.getElementById('ah-add-header').addEventListener('click',     e => { e.stopPropagation(); guardedAddRow(ahAddHeaderRow); });
   document.getElementById('btn-adhoc-check').addEventListener('click',   ahCheckNutrition);
   document.getElementById('adhoc-servings').addEventListener('input',    ahUpdatePerServingPreview);
   document.querySelectorAll('.ah-macro').forEach(el => el.addEventListener('input', ahUpdatePerServingPreview));

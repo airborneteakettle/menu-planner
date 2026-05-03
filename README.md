@@ -226,9 +226,12 @@ sqlite3 data/menu_planner.db "SELECT COUNT(*), ROUND(SUM(LENGTH(data))/1024.0/10
 - [ ] Export shopping list to CSV or share via link
 - [ ] Aisle/store ordering — let users re-order categories to match their store layout
 - [ ] Check-off sync across household members in real-time (currently requires page refresh)
+- [x] Scale shopping list quantities proportionally to planned servings (not whole-batch multiples)
+- [x] Account for household member servings — shared entries multiply by (owner + share count)
+- [x] Fix ingredient aggregation when two recipes share the same name (keyed by recipe_id)
 
 ### Household & Sharing
-- [ ] Household-level recipe library (recipes visible to all members, not just the creator)
+- [x] Household-level recipe library — recipes are global (no per-user scoping); all members see the full library
 - [ ] Per-member nutrition goals and dashboards
 
 ### Infrastructure

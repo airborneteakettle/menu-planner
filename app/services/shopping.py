@@ -1,4 +1,3 @@
-import math
 from collections import defaultdict
 import re
 
@@ -223,14 +222,16 @@ def generate_shopping_list(menu_entries) -> dict:
     Given a list of MenuEntry ORM objects, aggregate all ingredients
     and return them grouped by category.
 
-    Ingredient quantities are scaled by the number of *batches* needed for
-    each recipe — not the raw number of menu entries.  One batch covers up to
-    recipe.servings planned servings.  If the household plans more servings
-    than a single batch yields, a second batch (and its ingredients) is added.
+    Ingredient quantities are scaled proportionally to the number of servings
+    planned across all entries for a recipe (including shares).  The scale
+    factor is total_planned / recipe.servings, applied as a fraction so the
+    shopping list contains exactly what is needed — not rounded up to whole
+    recipe multiples.
 
     Example: recipe yields 4 servings, needs 1 lb chicken.
-      • 4 entries × 1 serving each  → 4 total servings → 1 batch → 1 lb chicken
-      • 5 entries × 1 serving each  → 5 total servings → 2 batches → 2 lb chicken
+      • 3 planned servings → scale 3/4 → ¾ lb chicken
+      • 4 planned servings → scale 4/4 → 1 lb chicken
+      • 5 planned servings → scale 5/4 → 1¼ lb chicken
 
     Returns:
         {
@@ -238,27 +239,36 @@ def generate_shopping_list(menu_entries) -> dict:
             ...
         }
     """
-    # ── Step 1: compute batches needed per recipe ─────────────────────────────
+    # ── Step 1: compute scale factor per recipe ───────────────────────────────
     # Group entries by recipe_id and sum planned servings.
+    # Shared entries count one serving per share recipient in addition to the owner.
     entries_by_recipe: dict[int, list] = defaultdict(list)
     for entry in menu_entries:
         if entry.recipe_id:
             entries_by_recipe[entry.recipe_id].append(entry)
 
-    batches_for: dict[int, int] = {}
+    scale_for: dict[int, float] = {}
     for recipe_id, entries in entries_by_recipe.items():
         recipe = entries[0].recipe
-        total_planned  = sum(e.servings or 1 for e in entries)
-        recipe_yield   = max(recipe.servings or 1, 1)
-        batches_for[recipe_id] = math.ceil(total_planned / recipe_yield)
+        # Each share means one more household member will eat this meal,
+        # so multiply the entry's servings by (owner + number of shares).
+        total_planned = sum(
+            (e.servings or 1) * (1 + len(getattr(e, "shares", [])))
+            for e in entries
+        )
+        recipe_yield      = max(recipe.servings or 1, 1)
+        scale_for[recipe_id] = total_planned / recipe_yield
 
-    # ── Step 2: build ingredient list scaled by batch count ───────────────────
-    # ingredient_key → {name, category, per_recipe: {recipe_name: {qty, count}}}
+    # ── Step 2: build ingredient list scaled proportionally ───────────────────
+    # ingredient_key → {name, category, per_recipe: {recipe_id: {recipe_name, qty, count}}}
+    # Keyed by recipe_id (not recipe name) so two recipes that share a name
+    # (e.g. two household members' independently-created versions of the same dish)
+    # each contribute their own scale factor rather than the second being silently dropped.
     seen: dict[str, dict] = {}
 
     for recipe_id, entries in entries_by_recipe.items():
-        recipe  = entries[0].recipe
-        batches = batches_for[recipe_id]
+        recipe = entries[0].recipe
+        scale  = scale_for[recipe_id]
 
         for ing in recipe.ingredients:
             if ing.is_header:
@@ -292,9 +302,8 @@ def generate_shopping_list(menu_entries) -> dict:
                     seen[key]["name"] = display_name
 
             pr = seen[key]["per_recipe"]
-            # Set once per recipe using the pre-computed batch count
-            if recipe.name not in pr:
-                pr[recipe.name] = {"qty": qty, "count": batches}
+            if recipe_id not in pr:
+                pr[recipe_id] = {"recipe_name": recipe.name, "qty": qty, "count": scale}
 
     grouped: dict[str, list] = defaultdict(list)
     category_order = ["Produce", "Protein", "Dairy", "Grains & Pantry", "Frozen", "Other"]
@@ -303,7 +312,7 @@ def generate_shopping_list(menu_entries) -> dict:
         grouped[item["category"]].append({
             "name":     item["name"],
             "quantity": _aggregate_qty(item["per_recipe"]),
-            "recipes":  list(item["per_recipe"].keys()),
+            "recipes":  list({info["recipe_name"] for info in item["per_recipe"].values()}),
         })
 
     for items in grouped.values():

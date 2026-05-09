@@ -19,8 +19,8 @@ _HEADERS = {
 }
 
 
-def _fetch_html(url: str, browserless_key: str | None = None, scrapingbee_key: str | None = None) -> str:
-    """Fetch page HTML directly, falling back to Browserless then ScrapingBee on 403."""
+def _fetch_html(url: str, browserless_key: str | None = None, scraperapi_key: str | None = None) -> str:
+    """Fetch page HTML directly, falling back to Browserless then ScraperAPI on 403."""
     log.info("IMPORT direct fetch: %s", url)
     resp = requests.get(url, headers=_HEADERS, timeout=15, allow_redirects=True)
     log.info("IMPORT direct fetch status: %s", resp.status_code)
@@ -50,27 +50,26 @@ def _fetch_html(url: str, browserless_key: str | None = None, scrapingbee_key: s
     else:
         log.warning("IMPORT no Browserless API key configured — skipping")
 
-    # Second fallback: ScrapingBee
-    if scrapingbee_key:
-        log.info("IMPORT trying ScrapingBee for %s", url)
-        sb_resp = requests.get(
-            "https://app.scrapingbee.com/api/v1/",
+    # Second fallback: ScraperAPI
+    if scraperapi_key:
+        log.info("IMPORT trying ScraperAPI for %s", url)
+        sa_resp = requests.get(
+            "https://api.scraperapi.com/",
             params={
-                "api_key":       scrapingbee_key,
-                "url":           url,
-                "render_js":     "true",
-                "wait":          "2000",
-                "premium_proxy": "true",
+                "api_key": scraperapi_key,
+                "url":     url,
+                "render":  "true",
+                "wait":    "2000",
             },
             timeout=60,
         )
-        log.info("IMPORT ScrapingBee status: %s", sb_resp.status_code)
-        if sb_resp.ok:
-            log.info("IMPORT using ScrapingBee result (%d bytes)", len(sb_resp.text))
-            return sb_resp.text
-        log.warning("IMPORT ScrapingBee failed: %s — %s", sb_resp.status_code, sb_resp.text[:200])
+        log.info("IMPORT ScraperAPI status: %s", sa_resp.status_code)
+        if sa_resp.ok:
+            log.info("IMPORT using ScraperAPI result (%d bytes)", len(sa_resp.text))
+            return sa_resp.text
+        log.warning("IMPORT ScraperAPI failed: %s — %s", sa_resp.status_code, sa_resp.text[:200])
     else:
-        log.warning("IMPORT no ScrapingBee API key configured — skipping")
+        log.warning("IMPORT no ScraperAPI key configured — skipping")
 
     raise ValueError(
         "This site is protected by Cloudflare and could not be imported. "
@@ -132,12 +131,12 @@ def title_from_url(url: str) -> str:
         return ''
 
 
-def import_recipe_from_url(url: str, usda_api_key: str, browserless_key: str | None = None, scrapingbee_key: str | None = None) -> dict:
+def import_recipe_from_url(url: str, usda_api_key: str, browserless_key: str | None = None, scraperapi_key: str | None = None) -> dict:
     """
     Scrape a recipe URL and return a structured dict ready to insert into the DB.
-    Falls back to Browserless then ScrapingBee on 403, then USDA for missing nutrition.
+    Falls back to Browserless then ScraperAPI on 403, then USDA for missing nutrition.
     """
-    html = _fetch_html(url, browserless_key, scrapingbee_key)
+    html = _fetch_html(url, browserless_key, scraperapi_key)
     scraper = scrape_html(html, org_url=url)
 
     name = ""

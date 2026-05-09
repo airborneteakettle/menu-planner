@@ -158,11 +158,11 @@ def import_recipe():
 
     api_key          = current_app.config.get("USDA_API_KEY", "DEMO_KEY")
     browserless_key  = current_app.config.get("BROWSERLESS_API_KEY")
-    scrapingbee_key  = current_app.config.get("SCRAPINGBEE_API_KEY")
+    scraperapi_key   = current_app.config.get("SCRAPERAPI_KEY")
     fallback_name    = (data.get("fallback_name") or "").strip()
     log.info("RECIPE_IMPORT_START: user=%s url=%s", current_user.username, url)
     try:
-        scraped = import_recipe_from_url(url, api_key, browserless_key, scrapingbee_key)
+        scraped = import_recipe_from_url(url, api_key, browserless_key, scraperapi_key)
     except Exception as e:
         log.error("RECIPE_IMPORT_FAILED: user=%s url=%s error=%s", current_user.username, url, e)
 

@@ -29,7 +29,7 @@ A self-hosted meal planning web app with recipe management, weekly menu planning
 | Frontend | Vanilla JS SPA, Bootstrap 5 |
 | Production server | Gunicorn behind nginx |
 | Nutrition data | USDA FoodData Central API |
-| Recipe scraping | recipe-scrapers, Browserless.io (optional), ScrapingBee (optional) |
+| Recipe scraping | recipe-scrapers, Browserless.io (optional), ScraperAPI (optional) |
 | Email | Resend |
 
 ---
@@ -105,7 +105,7 @@ USDA_API_KEY=DEMO_KEY          # or register free at https://fdc.nal.usda.gov/ap
 RESEND_API_KEY=                # required for password reset emails
 MAIL_FROM=you@example.com
 BROWSERLESS_API_KEY=           # optional — JS-rendered recipe scraping
-SCRAPINGBEE_API_KEY=           # optional — premium scraping fallback
+SCRAPERAPI_KEY=                # optional — premium scraping fallback (scraperapi.com, 1000 free credits/month)
 ```
 
 Initialise the database and create your first user:

@@ -328,10 +328,9 @@ def shopping_from_recipe():
 
     recipe = Recipe.query.get_or_404(recipe_id)
 
-    # Scale factor: how many times the full recipe to make
+    # Scale factor: always at least 1 full recipe; round to nearest ¼
     recipe_yield = max(recipe.servings or 1, 1)
-    import math
-    batches = math.ceil(servings / recipe_yield)
+    scale = round(max(1.0, servings / recipe_yield) * 4) / 4
 
     created = []
     for ing in recipe.ingredients:
@@ -341,20 +340,19 @@ def shopping_from_recipe():
         if not name:
             continue
         qty  = (ing.quantity or "").strip() or None
-        # Scale quantity by batch count if it starts with a number
-        if qty and batches > 1:
+        if qty and scale != 1.0:
             import re
+            from fractions import Fraction
             m = re.match(r'^(\d+(?:[./]\d+)?(?:\s+\d+/\d+)?)\s*(.*)', qty)
             if m:
                 try:
-                    from fractions import Fraction
                     amount = float(sum(Fraction(p) for p in m.group(1).split()))
                     unit   = m.group(2).strip()
-                    scaled = amount * batches
+                    scaled = amount * scale
                     whole  = int(scaled)
-                    frac   = scaled - whole
+                    frac   = round(scaled - whole, 6)
                     frac_str = {0.5: '½', 0.25: '¼', 0.75: '¾',
-                                round(1/3, 6): '⅓', round(2/3, 6): '⅔'}.get(round(frac, 6))
+                                round(1/3, 6): '⅓', round(2/3, 6): '⅔'}.get(frac)
                     num_str = (f"{whole}{frac_str}" if frac_str else
                                f"{whole}" if frac == 0 else f"{scaled:g}")
                     qty = f"{num_str} {unit}".strip() if unit else num_str

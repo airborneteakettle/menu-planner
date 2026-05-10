@@ -43,12 +43,12 @@ class TestBatchScaling:
                 flat[item["name"]] = item["quantity"]
         return flat
 
-    def test_partial_serving_scales_down(self):
-        """1 serving of a 4-serving recipe → scale ¼ → ½ cup from base 2 cup."""
+    def test_partial_serving_adds_full_recipe(self):
+        """1 serving of a 4-serving recipe → scale clamped to 1.0 → full 2 cup."""
         r = make_recipe("Pasta", 4, [make_ingredient("pasta", "2 cup")])
         entries = [make_entry(r, servings=1)]
         flat = self._list(r, entries)
-        assert flat["pasta"] == "½ cup"
+        assert flat["pasta"] == "2 cup"
 
     def test_full_recipe_yield_gives_base_qty(self):
         """4 servings planned for a 4-serving recipe → scale 1 → full base quantity."""
@@ -154,31 +154,31 @@ class TestBatchScaling:
         flat = self._list(r, entries)
         assert flat["pasta"] == "2½ cup"
 
-    def test_shared_entry_below_yield_scales_down(self):
-        """Shared with 2 others → 3 effective servings; scale 3/4 → 3 cup from base 4 cup."""
+    def test_shared_entry_below_yield_adds_full_recipe(self):
+        """Shared with 2 others → 3 effective servings < yield of 4 → scale clamped to 1.0 → 4 cup."""
         r = make_recipe("Soup", 4, [make_ingredient("broth", "4 cup")])
         shares = [make_share(), make_share()]
         entries = [make_entry(r, servings=1, shares=shares)]
         flat = self._list(r, entries)
-        assert flat["broth"] == "3 cup"
+        assert flat["broth"] == "4 cup"
 
     def test_unshared_single_serving_of_two_serving_recipe(self):
-        """1 serving of a 2-serving recipe → scale ½ → ½ of each ingredient."""
+        """1 serving of a 2-serving recipe → scale clamped to 1.0 → full ingredient."""
         r = make_recipe("Salad", 2, [make_ingredient("lettuce", "1")])
         entries = [make_entry(r, servings=1)]
         flat = self._list(r, entries)
-        assert flat["lettuce"] == "½"
+        assert flat["lettuce"] == "1"
 
     def test_shared_entry_plus_independent_entries(self):
         """
         User A shares with 1 other (2 effective) + User C has own entry (1).
-        Total 3 servings; scale 3/4 → 3 tortillas from base 4.
+        Total 3 servings < yield 4 → scale clamped to 1.0 → 4 tortillas.
         """
         r = make_recipe("Tacos", 4, [make_ingredient("tortilla", "4")])
         entry_shared = make_entry(r, servings=1, shares=[make_share()])
         entry_own    = make_entry(r, servings=1)
         flat = self._list(r, [entry_shared, entry_own])
-        assert flat["tortilla"] == "3"
+        assert flat["tortilla"] == "4"
 
     def test_two_recipes_same_name_recipes_list_deduped(self):
         """The 'recipes' list in the output de-duplicates the name when two

@@ -222,16 +222,16 @@ def generate_shopping_list(menu_entries) -> dict:
     Given a list of MenuEntry ORM objects, aggregate all ingredients
     and return them grouped by category.
 
-    Ingredient quantities are scaled proportionally to the number of servings
-    planned across all entries for a recipe (including shares).  The scale
-    factor is total_planned / recipe.servings, applied as a fraction so the
-    shopping list contains exactly what is needed — not rounded up to whole
-    recipe multiples.
+    Ingredient quantities are scaled by the ratio of planned servings to recipe
+    yield (including shares), with two rules applied to the scale factor:
+      1. Minimum of 1.0 — planning any number of servings ≤ the recipe yield
+         still adds the full recipe to the list.
+      2. Rounded to the nearest ¼ — so you never buy an awkward fraction.
 
     Example: recipe yields 4 servings, needs 1 lb chicken.
-      • 3 planned servings → scale 3/4 → ¾ lb chicken
-      • 4 planned servings → scale 4/4 → 1 lb chicken
-      • 5 planned servings → scale 5/4 → 1¼ lb chicken
+      • 1–4 planned servings → scale 1.0  → 1 lb chicken
+      • 5 planned servings   → scale 1.25 → 1¼ lb chicken
+      • 6 planned servings   → scale 1.5  → 1½ lb chicken
 
     Returns:
         {
@@ -256,8 +256,10 @@ def generate_shopping_list(menu_entries) -> dict:
             (e.servings or 1) * (1 + len(getattr(e, "shares", [])))
             for e in entries
         )
-        recipe_yield      = max(recipe.servings or 1, 1)
-        scale_for[recipe_id] = total_planned / recipe_yield
+        recipe_yield = max(recipe.servings or 1, 1)
+        raw_scale    = total_planned / recipe_yield
+        # Always buy at least a full recipe; above that round to the nearest ¼ recipe
+        scale_for[recipe_id] = round(max(1.0, raw_scale) * 4) / 4
 
     # ── Step 2: build ingredient list scaled proportionally ───────────────────
     # ingredient_key → {name, category, per_recipe: {recipe_id: {recipe_name, qty, count}}}

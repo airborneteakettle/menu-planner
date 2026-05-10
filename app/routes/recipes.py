@@ -186,11 +186,20 @@ def import_recipe():
         log.info("RECIPE_IMPORT_STUB: user=%s recipe_id=%d name=%r", current_user.username, stub.id, stub.name)
         return jsonify(_attach_goal_comparison(stub.to_dict())), 201
 
+    recipe, updated = _save_scraped_recipe(scraped)
+    log.info("RECIPE_IMPORT: user=%s recipe_id=%d name=%r", current_user.username, recipe.id, recipe.name)
+    result = _attach_goal_comparison(recipe.to_dict())
+    if updated:
+        result["_updated"] = True
+    return jsonify(result), 200 if updated else 201
+
+
+def _save_scraped_recipe(scraped: dict) -> tuple:
+    """Upsert a recipe from a scraped payload. Returns (recipe, was_updated)."""
     source_url = scraped.get("source_url")
     existing   = Recipe.query.filter_by(source_url=source_url).first() if source_url else None
 
     if existing:
-        # Update fields but preserve meal_type and ratings set by the user
         existing.name             = scraped["name"]
         existing.servings         = scraped.get("servings", 1)
         existing.calories         = scraped.get("calories")
@@ -200,7 +209,6 @@ def import_recipe():
         existing.fiber_g          = scraped.get("fiber_g")
         existing.instructions     = scraped.get("instructions")
         existing.nutrition_source = scraped.get("nutrition_source")
-        # Replace ingredients
         for ing in list(existing.ingredients):
             db.session.delete(ing)
         db.session.flush()
@@ -208,10 +216,7 @@ def import_recipe():
             existing.ingredients.append(Ingredient(name=ing["name"], quantity=ing.get("quantity"), is_header=ing.get("is_header", False)))
         apply_auto_tags(existing)
         db.session.commit()
-        log.info("RECIPE_REIMPORT: user=%s recipe_id=%d name=%r", current_user.username, existing.id, existing.name)
-        result = _attach_goal_comparison(existing.to_dict())
-        result["_updated"] = True
-        return jsonify(result), 200
+        return existing, True
 
     recipe = Recipe(
         name             = scraped["name"],
@@ -224,17 +229,36 @@ def import_recipe():
         instructions     = scraped.get("instructions"),
         source_url       = source_url,
         nutrition_source = scraped.get("nutrition_source"),
-        # meal_type intentionally not set — user sets this manually
     )
     for ing in scraped.get("ingredients", []):
         recipe.ingredients.append(Ingredient(name=ing["name"], quantity=ing.get("quantity"), is_header=ing.get("is_header", False)))
-
     db.session.add(recipe)
-    db.session.flush()          # assign recipe.id so tags can reference it
+    db.session.flush()
     apply_auto_tags(recipe)
     db.session.commit()
-    log.info("RECIPE_IMPORT: user=%s recipe_id=%d name=%r", current_user.username, recipe.id, recipe.name)
-    return jsonify(_attach_goal_comparison(recipe.to_dict())), 201
+    return recipe, False
+
+
+@bp.route("/import-payload", methods=["POST"])
+def import_payload():
+    """
+    POST /api/recipes/import-payload
+    Accepts a pre-scraped recipe JSON (same structure as import_recipe_from_url returns)
+    and upserts it into the database. Used by scripts/scrape_recipe.py --push.
+    """
+    payload = request.get_json()
+    if not payload or not payload.get("name"):
+        return jsonify({"error": "payload must include at least a 'name' field"}), 400
+
+    recipe, updated = _save_scraped_recipe(payload)
+    log.info(
+        "RECIPE_IMPORT_PAYLOAD: user=%s recipe_id=%d name=%r updated=%s",
+        current_user.username, recipe.id, recipe.name, updated,
+    )
+    result = _attach_goal_comparison(recipe.to_dict())
+    if updated:
+        result["_updated"] = True
+    return jsonify(result), 200 if updated else 201
 
 
 @bp.route("/", methods=["POST"])
